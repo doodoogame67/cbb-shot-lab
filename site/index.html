@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CBB Shot Lab</title>
+<meta name="description" content="Query every D1 men's player by shot zone, unassisted rate, distance and tempo-free stats.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a scorer's-table workbench. Controls stacked in one band on top, one dense sortable table below, glossary at the foot. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f6f8fa;
+  --ink: #15202b;
+  --muted: #5b6a78;
+  --line: #d6dde4;
+  --accent: #c8581a;      /* basketball leather */
+  --accent-ink: #ffffff;
+  --navy: #1f3d63;
+  --hi: #e8862a;          /* high percentile */
+  --lo: #3f7cc0;          /* low percentile */
+  --warn-bg: #fff4e5;
+  --warn-ink: #7a4510;
+  --err: #b42318;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #151c24; --surface-2: #1a232d; --ink: #e5eaef; --muted: #93a2b1;
+    --line: #2a3643; --accent: #ef7a35; --accent-ink: #1a0d04; --navy: #9cc0ea;
+    --hi: #f0913a; --lo: #5b9be0; --warn-bg: #2d2113; --warn-ink: #f3c58f; --err: #ff8a7a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #151c24; --surface-2: #1a232d; --ink: #e5eaef; --muted: #93a2b1;
+  --line: #2a3643; --accent: #ef7a35; --accent-ink: #1a0d04; --navy: #9cc0ea;
+  --hi: #f0913a; --lo: #5b9be0; --warn-bg: #2d2113; --warn-ink: #f3c58f; --err: #ff8a7a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45;
+}
+.wrap {
+  max-width: 1500px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+  display: grid; gap: 14px;
+}
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 24px; }
+.brand h1 {
+  font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1; margin: 0;
+  letter-spacing: 0.01em; text-wrap: balance;
+}
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+.eyebrow { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 13px; color: var(--muted); font-weight: 600; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 12px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.field { display: flex; align-items: center; gap: 6px; }
+.label { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 12.5px; color: var(--muted); }
+
+button, select, input, textarea { font: inherit; color: inherit; }
+select, input[type=number], input[type=text], input[type=search] {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; min-width: 0;
+}
+input[type=number] { width: 76px; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface-2); padding: 5px 11px; font-variant-numeric: tabular-nums; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--navy); color: var(--surface); font-weight: 600; }
+
+.chip { border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 5px 11px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.ghost { background: transparent; }
+.x { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+.x:hover { color: var(--err); }
+
+details.drop { position: relative; }
+details.drop > summary { list-style: none; }
+details.drop > summary::-webkit-details-marker { display: none; }
+details.drop .menu {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); width: min(420px, calc(100vw - 32px));
+  display: grid; gap: 8px;
+}
+.confgrid { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.builder { display: grid; gap: 6px; }
+.frow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.frow select.col { max-width: 260px; }
+.frow input { width: 90px; }
+
+.exprbox { display: grid; gap: 6px; }
+.exprbox textarea {
+  width: 100%; min-height: 44px; resize: vertical; font-family: var(--font-mono); font-size: 13.5px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+}
+.exprbox textarea.bad { border-color: var(--err); }
+.msg { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.msg.err { color: var(--err); }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+code, .mono, .exprbox textarea { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
+
+.views { display: flex; flex-wrap: wrap; gap: 0 2px; border-bottom: 1px solid var(--line); }
+.views button {
+  border: 0; background: transparent; padding: 7px 12px; font-family: var(--font-display); font-weight: 600;
+  font-size: 15px; letter-spacing: 0.03em; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+.views button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+.status { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.count { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.count b { color: var(--accent); }
+.note { background: var(--warn-bg); color: var(--warn-ink); border-radius: 6px; padding: 7px 10px; font-size: 13px; }
+
+.tablewrap { overflow: auto; max-height: 78vh; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; font-size: 13px; width: max-content; min-width: 100%; }
+th, td { padding: 4px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface-2); font-family: var(--font-display); font-weight: 600;
+  font-size: 13.5px; letter-spacing: 0.02em; cursor: pointer; user-select: none; vertical-align: bottom;
+}
+th .grp { display: block; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+th.sorted { color: var(--accent); }
+th.sorted::after { content: attr(data-arrow); margin-left: 3px; }
+td.s, th.s { text-align: left; }
+td.name, th.name { position: sticky; left: 0; z-index: 1; background: var(--surface); border-right: 1px solid var(--line); }
+th.name { z-index: 3; background: var(--surface-2); }
+td.name a { color: inherit; text-decoration: none; font-weight: 600; }
+td.name a:hover { color: var(--accent); text-decoration: underline; }
+td.rk { color: var(--muted); text-align: right; }
+tbody tr:hover td { box-shadow: inset 0 0 0 9999px rgb(127 127 127 / 0.08); }
+.more { display: flex; justify-content: center; padding: 8px; }
+
+.gloss { display: grid; gap: 10px; }
+.gloss h2 { font-family: var(--font-display); font-size: 22px; margin: 0; }
+.gloss .cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 24px; }
+.gloss dl { margin: 0; }
+.gloss dt { font-family: var(--font-mono); font-size: 12.5px; margin-top: 6px; }
+.gloss dd { margin: 0; color: var(--muted); font-size: 13px; }
+.gloss p { margin: 0; max-width: 85ch; }
+.gloss ul { margin: 0; padding-left: 18px; max-width: 85ch; display: grid; gap: 4px; }
+.colpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 10px; max-height: 50vh; overflow: auto; }
+.colpick h4 { grid-column: 1 / -1; margin: 6px 0 0; font-family: var(--font-display); font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.colpick label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.loading { padding: 40px; text-align: center; color: var(--muted); }
+@media (max-width: 640px) {
+  .brand h1 { font-size: 28px; }
+  .frow select.col { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">D1 men · 2024–2026 · ESPN play-by-play</div>
+      <h1>CBB <span>Shot</span> Lab</h1>
+      <p>Filter every D1 player by how and where they score: unassisted rate by zone, rim vs. non-rim 2s vs. long 2s vs. 3s, corner 3s, and the usual tempo-free stats.</p>
+    </div>
+  </header>
+
+  <section class="panel" aria-label="Filters">
+    <div class="row">
+      <div class="field"><span class="label">Season</span>
+        <div class="seg" id="seasonSeg"></div>
+      </div>
+      <div class="field"><label class="label" for="minPct">Min % mins</label>
+        <input type="number" id="minPct" min="0" max="100" step="5">
+      </div>
+      <div class="field"><span class="label">Class</span>
+        <div class="row" id="clsChips" style="gap:4px"></div>
+      </div>
+      <details class="drop" id="confDrop">
+        <summary class="btn" id="confSummary">Conferences: all</summary>
+        <div class="menu">
+          <div class="row" style="gap:6px">
+            <button class="btn" id="confHigh" type="button">High-majors</button>
+            <button class="btn ghost" id="confClear" type="button">Clear</button>
+          </div>
+          <div class="confgrid" id="confGrid"></div>
+        </div>
+      </details>
+      <div class="field" style="flex:1 1 180px"><label class="label" for="search">Player / team</label>
+        <input type="search" id="search" placeholder="e.g. Purdue" style="flex:1">
+      </div>
+    </div>
+
+    <div class="builder">
+      <div class="row" style="justify-content:space-between">
+        <span class="label">Filters</span>
+        <div class="row" style="gap:6px">
+          <select id="preset" aria-label="Load a preset query"><option value="">Try a preset query…</option></select>
+          <button class="btn" id="addFilter" type="button">+ Add filter</button>
+        </div>
+      </div>
+      <div id="frows" class="builder"></div>
+    </div>
+
+    <div class="exprbox">
+      <label class="label" for="expr">Query (any column, combined with the filters above)</label>
+      <textarea id="expr" spellcheck="false" placeholder="rim_unast >= 60 and tpr >= 35 and conf in ('B10','SEC')"></textarea>
+      <div class="msg" id="exprMsg"></div>
+    </div>
+
+    <details>
+      <summary class="label" style="cursor:pointer">Formula columns</summary>
+      <div class="exprbox" style="margin-top:8px">
+        <div class="row" style="gap:6px">
+          <input type="text" id="fName" placeholder="name, e.g. self_mk40" style="width:170px" class="mono">
+          <span>=</span>
+          <input type="text" id="fExpr" placeholder="rim_um40 + j2_um40 + three_um40" style="flex:1 1 260px" class="mono">
+          <button class="btn primary" id="fAdd" type="button">Add column</button>
+        </div>
+        <div class="msg" id="fMsg">Formula columns can be sorted, filtered and used in the query box like any other column.</div>
+        <div class="row" id="fList" style="gap:6px"></div>
+      </div>
+    </details>
+  </section>
+
+  <section style="display:grid; gap:10px; min-width:0">
+    <div class="views" id="views" role="toolbar" aria-label="Column sets"></div>
+    <details class="drop" id="colDrop" hidden>
+      <summary class="btn">Choose columns</summary>
+      <div class="menu" style="width:min(720px, calc(100vw - 32px))"><div class="colpick" id="colPick"></div></div>
+    </details>
+    <div class="status">
+      <div class="count" id="count">Loading…</div>
+      <div class="row" style="gap:6px">
+        <button class="btn" id="copyQ" type="button">Copy query</button>
+        <button class="btn" id="copyCsv" type="button">Copy results as CSV</button>
+        <button class="btn ghost" id="reset" type="button">Reset</button>
+      </div>
+    </div>
+    <div class="note" id="locNote" hidden></div>
+    <div class="tablewrap" id="tablewrap"><div class="loading">Loading 15,000 player-seasons…</div></div>
+    <div class="more" id="more" hidden><button class="btn" id="moreBtn" type="button">Show 100 more</button></div>
+  </section>
+
+  <section class="panel gloss" aria-label="Glossary">
+    <h2>How the numbers work</h2>
+    <ul>
+      <li><b>Scope:</b> D1 vs. D1 games only, regular season plus postseason. Percentile shading compares each player to players in the same season with at least 40% of team minutes.</li>
+      <li><b>Zones:</b> <i>rim</i> = layups, dunks, tip-ins. <i>j2</i> = every other 2 (jumpers, floaters, hooks), the "non-rim 2s". Located j2s are split into <i>close2</i> (under 8 ft), <i>mid2</i> (8–16 ft) and <i>far2</i> (16 ft to the arc). <i>c3</i> = corner 3s, <i>ab3</i> = above-the-break 3s.</li>
+      <li><b>Unassisted:</b> play-by-play only records assists on made shots, so <code>*_unast</code> is the share of a player's <i>makes</i> in that zone with no assist. <code>*_um40</code> is unassisted makes per 40 minutes, which rewards volume.</li>
+      <li><b>Shot locations:</b> ESPN logged coordinates for about 98% of 2026 shots, but only about 26% in 2025 and 5% in 2024. Distance-band columns (<code>close2</code>, <code>mid2</code>, <code>far2</code>, <code>c3</code>, <code>ab3</code>) only cover located shots; <code>loc_cov</code> shows each player's coverage. Rim / j2 / 3 splits come from shot type and are complete every season.</li>
+      <li><b>Checked against Barttorvik:</b> rim, other-2 and 3PT makes, attempts and percentages match T-Rank exactly for sampled players. Assisted counts can differ by a make or so. Usage and assist rate use Basketball-Reference formulas, so they run a little different from T-Rank's.</li>
+      <li><b>Query syntax:</b> <code>and</code>, <code>or</code>, <code>not</code>, parentheses, <code>+ - * /</code>, comparisons <code>&gt; &gt;= &lt; &lt;= = !=</code>, <code>between 30 and 40</code>, <code>in ('B10','SEC')</code>, and functions <code>abs min max round coalesce</code>. Text compares ignore case. <code>ht</code> is in inches (6'9" = 81).</li>
+    </ul>
+    <div class="cols" id="glossCols"></div>
+  </section>
+</div>
+
+<script>
+"use strict";
+// ---------- column catalogue ----------
+// fmt: s text, i integer, 1/2 decimals, ht height. dir: 1 higher is better, -1 lower is better, 0 no shading.
+const COLS = [
+  ["name", "Player", "Info", "s", 0, "Player name (links to ESPN)"],
+  ["team", "Team", "Info", "s", 0, "Team"],
+  ["conf", "Conf", "Info", "s", 0, "Conference"],
+  ["season", "Yr", "Info", "i", 0, "Season (2026 = 2025-26)"],
+  ["cls", "Cls", "Info", "s", 0, "Class from ESPN roster (2025+ only)"],
+  ["pos", "Pos", "Info", "s", 0, "Position from ESPN roster (2025+ only)"],
+  ["ht", "Ht", "Info", "ht", 0, "Height in inches (displayed as ft-in)"],
+  ["g", "G", "Info", "i", 0, "Games played (D1 opponents)"],
+  ["gs", "GS", "Info", "i", 0, "Games started"],
+  ["mpg", "MPG", "Info", "1", 0, "Minutes per game"],
+  ["min_pct", "Min%", "Info", "1", 0, "Share of team minutes in games played"],
+
+  ["ppg", "PPG", "Box", "1", 1, "Points per game"],
+  ["rpg", "RPG", "Box", "1", 1, "Rebounds per game"],
+  ["apg", "APG", "Box", "1", 1, "Assists per game"],
+  ["usg", "Usg", "Box", "1", 0, "Usage rate: share of team plays used on the floor"],
+  ["ts", "TS%", "Box", "1", 1, "True shooting %"],
+  ["efg", "eFG%", "Box", "1", 1, "Effective FG %"],
+  ["ast_pct", "Ast%", "Box", "1", 1, "Assist rate: % of teammate FGs assisted while on floor"],
+  ["to_pct", "TO%", "Box", "1", -1, "Turnovers per 100 plays used"],
+  ["ast_to", "A/TO", "Box", "2", 1, "Assist to turnover ratio"],
+  ["or_pct", "OR%", "Box", "1", 1, "Offensive rebound %"],
+  ["dr_pct", "DR%", "Box", "1", 1, "Defensive rebound %"],
+  ["stl_pct", "Stl%", "Box", "1", 1, "Steals per 100 opponent possessions"],
+  ["blk_pct", "Blk%", "Box", "1", 1, "Share of opponent 2PA blocked"],
+  ["ftr", "FTR", "Box", "1", 1, "Free throw rate: FTA per 100 FGA"],
+  ["tpr", "3PR", "Box", "1", 0, "3-point rate: 3PA per 100 FGA"],
+  ["ft_pct", "FT%", "Box", "1", 1, "Free throw %"],
+  ["fg2_pct", "2P%", "Box", "1", 1, "2-point FG %"],
+  ["fg3_pct", "3P%", "Box", "1", 1, "3-point FG %"],
+  ["pts40", "Pts/40", "Box", "1", 1, "Points per 40 minutes"],
+  ["reb40", "Reb/40", "Box", "1", 1, "Rebounds per 40"],
+  ["ast40", "Ast/40", "Box", "1", 1, "Assists per 40"],
+  ["stl40", "Stl/40", "Box", "1", 1, "Steals per 40"],
+  ["blk40", "Blk/40", "Box", "1", 1, "Blocks per 40"],
+  ["pf40", "PF/40", "Box", "1", -1, "Fouls per 40"],
+  ["fta40", "FTA/40", "Box", "1", 1, "Free throw attempts per 40"],
+  ["fga", "FGA", "Totals", "i", 0, "Field goal attempts (box score)"],
+  ["tpa", "3PA", "Totals", "i", 0, "3-point attempts (box score)"],
+  ["fta", "FTA", "Totals", "i", 0, "Free throw attempts"],
+  ["pts", "Pts", "Totals", "i", 0, "Points"],
+  ["ast", "Ast", "Totals", "i", 0, "Assists"],
+  ["tov", "TO", "Totals", "i", 0, "Turnovers"],
+  ["stl", "Stl", "Totals", "i", 0, "Steals"],
+  ["blk", "Blk", "Totals", "i", 0, "Blocks"],
+  ["orb", "ORB", "Totals", "i", 0, "Offensive rebounds"],
+  ["drb", "DRB", "Totals", "i", 0, "Defensive rebounds"],
+
+  ["pbp_fga", "FGA", "Shots", "i", 0, "Field goal attempts found in play-by-play"],
+  ["unast", "Unast%", "Shots", "1", 1, "% of all made FGs that were unassisted"],
+  ["loc_cov", "Loc%", "Shots", "1", 0, "% of this player's FGA with a shot location"],
+  ["rim_a", "Rim A", "Rim", "i", 0, "Rim attempts (layups, dunks, tips)"],
+  ["rim_m", "Rim M", "Rim", "i", 0, "Rim makes"],
+  ["rim_pct", "Rim%", "Rim", "1", 1, "Rim FG %"],
+  ["rim_rate", "Rim rt", "Rim", "1", 0, "Rim attempts per 100 FGA"],
+  ["rim_unast", "Rim Unast", "Rim", "1", 1, "% of rim makes unassisted"],
+  ["rim_um40", "Rim UM/40", "Rim", "2", 1, "Unassisted rim makes per 40"],
+  ["j2_a", "J2 A", "Non-rim 2", "i", 0, "Non-rim 2 attempts (jumpers, floaters, hooks)"],
+  ["j2_m", "J2 M", "Non-rim 2", "i", 0, "Non-rim 2 makes"],
+  ["j2_pct", "J2%", "Non-rim 2", "1", 1, "Non-rim 2 FG %"],
+  ["j2_rate", "J2 rt", "Non-rim 2", "1", 0, "Non-rim 2 attempts per 100 FGA"],
+  ["j2_unast", "J2 Unast", "Non-rim 2", "1", 1, "% of non-rim 2 makes unassisted"],
+  ["j2_um40", "J2 UM/40", "Non-rim 2", "2", 1, "Unassisted non-rim 2 makes per 40"],
+  ["three_a", "3 A", "Three", "i", 0, "3-point attempts (play-by-play)"],
+  ["three_m", "3 M", "Three", "i", 0, "3-point makes"],
+  ["three_pct", "3%", "Three", "1", 1, "3-point FG %"],
+  ["three_rate", "3 rt", "Three", "1", 0, "3PA per 100 FGA (play-by-play)"],
+  ["three_unast", "3 Unast", "Three", "1", 1, "% of made 3s unassisted"],
+  ["three_um40", "3 UM/40", "Three", "2", 1, "Unassisted made 3s per 40"],
+
+  ["close2_a", "Cls2 A", "Close 2 (<8ft)", "i", 0, "Located non-rim 2s under 8 ft"],
+  ["close2_pct", "Cls2%", "Close 2 (<8ft)", "1", 1, "Close 2 FG %"],
+  ["close2_rate", "Cls2 rt", "Close 2 (<8ft)", "1", 0, "Est. close 2s per 100 FGA"],
+  ["close2_unast", "Cls2 Unast", "Close 2 (<8ft)", "1", 1, "% of close 2 makes unassisted"],
+  ["mid2_a", "Mid2 A", "Mid 2 (8-16ft)", "i", 0, "Located non-rim 2s, 8-16 ft"],
+  ["mid2_pct", "Mid2%", "Mid 2 (8-16ft)", "1", 1, "Mid 2 FG %"],
+  ["mid2_rate", "Mid2 rt", "Mid 2 (8-16ft)", "1", 0, "Est. mid 2s per 100 FGA"],
+  ["mid2_unast", "Mid2 Unast", "Mid 2 (8-16ft)", "1", 1, "% of mid 2 makes unassisted"],
+  ["far2_a", "Far2 A", "Far 2 (16ft+)", "i", 0, "Located 2s from 16 ft to the arc"],
+  ["far2_pct", "Far2%", "Far 2 (16ft+)", "1", 1, "Far 2 FG %"],
+  ["far2_rate", "Far2 rt", "Far 2 (16ft+)", "1", 0, "Est. far 2s per 100 FGA"],
+  ["far2_unast", "Far2 Unast", "Far 2 (16ft+)", "1", 1, "% of far 2 makes unassisted"],
+  ["c3_a", "C3 A", "Corner 3", "i", 0, "Located corner 3 attempts"],
+  ["c3_pct", "C3%", "Corner 3", "1", 1, "Corner 3 FG %"],
+  ["c3_shr", "C3 shr", "Corner 3", "1", 0, "% of located 3PA from the corner"],
+  ["c3_unast", "C3 Unast", "Corner 3", "1", 1, "% of corner 3 makes unassisted"],
+  ["ab3_a", "AB3 A", "Above-break 3", "i", 0, "Located above-the-break 3 attempts"],
+  ["ab3_pct", "AB3%", "Above-break 3", "1", 1, "Above-the-break 3 FG %"],
+  ["ab3_unast", "AB3 Unast", "Above-break 3", "1", 1, "% of above-break 3 makes unassisted"],
+
+  ["ast_rim_shr", "Ast→Rim", "Passing", "1", 0, "% of his assists that led to rim makes"],
+  ["ast_j2_shr", "Ast→J2", "Passing", "1", 0, "% of his assists that led to non-rim 2s"],
+  ["ast_three_shr", "Ast→3", "Passing", "1", 0, "% of his assists that led to 3s"],
+].map(([key, label, group, fmt, dir, desc]) => ({ key, label, group, fmt, dir, desc }));
+const COL = Object.fromEntries(COLS.map(c => [c.key, c]));
+const HEAD = ["name", "team", "conf"];
+
+const VIEWS = {
+  overview: { label: "Overview", cols: [...HEAD, "cls", "ht", "g", "mpg", "min_pct", "ppg", "usg", "ts", "efg", "tpr", "ftr", "ast_pct", "to_pct", "or_pct", "dr_pct", "blk_pct", "stl_pct"] },
+  self: { label: "Self-creation", cols: [...HEAD, "cls", "ht", "min_pct", "usg", "unast", "rim_a", "rim_unast", "rim_um40", "j2_a", "j2_unast", "j2_um40", "three_a", "three_unast", "three_um40", "ts"] },
+  zones: { label: "Shot zones", cols: [...HEAD, "min_pct", "pbp_fga", "rim_a", "rim_pct", "rim_rate", "j2_a", "j2_pct", "j2_rate", "three_a", "three_pct", "three_rate", "ftr", "ft_pct", "ts"] },
+  distance: { label: "Distance", cols: [...HEAD, "loc_cov", "close2_a", "close2_pct", "close2_rate", "mid2_a", "mid2_pct", "mid2_rate", "far2_a", "far2_pct", "far2_rate", "far2_unast", "c3_a", "c3_pct", "c3_shr", "ab3_a", "ab3_pct", "ab3_unast"] },
+  box: { label: "Per 40", cols: [...HEAD, "cls", "mpg", "pts40", "reb40", "ast40", "stl40", "blk40", "fta40", "pf40", "fg2_pct", "fg3_pct", "ft_pct", "ast_to"] },
+  passing: { label: "Passing", cols: [...HEAD, "cls", "min_pct", "usg", "apg", "ast_pct", "to_pct", "ast_to", "ast40", "ast_rim_shr", "ast_j2_shr", "ast_three_shr"] },
+  custom: { label: "Custom", cols: null },
+};
+
+const PRESETS = [
+  { name: "Self-creators at the rim", expr: "rim_a >= 100 and rim_unast >= 70", view: "self", sort: "rim_um40" },
+  { name: "Pull-up 3 shooters", expr: "three_a >= 100 and three_unast >= 40 and three_pct >= 34", view: "self", sort: "three_um40" },
+  { name: "Long-2 diet (2026 locations)", expr: "far2_a >= 30 and far2_rate >= 7", view: "distance", sort: "far2_rate", season: "2026" },
+  { name: "Pure catch-and-shoot", expr: "three_a >= 120 and tpr >= 60 and three_unast <= 10", view: "zones", sort: "three_pct" },
+  { name: "Stretch bigs", expr: "ht >= 81 and tpr >= 35 and three_a >= 60", view: "overview", sort: "fg3_pct" },
+  { name: "Three-level self-creators", expr: "rim_unast >= 55 and j2_unast >= 75 and three_unast >= 30 and pbp_fga >= 250", view: "self", sort: "usg" },
+  { name: "Rim-feeding playmakers", expr: "ast_pct >= 25 and ast_rim_shr >= 55", view: "passing", sort: "ast_rim_shr" },
+  { name: "Corner specialists (2026)", expr: "c3_a >= 50 and c3_shr >= 40", view: "distance", sort: "c3_pct", season: "2026" },
+  { name: "Freshman shot creators", expr: "cls = 'Fr' and usg >= 24 and unast >= 50", view: "self", sort: "usg" },
+];
+const HIGH_MAJORS = ["ACC", "B10", "B12", "BE", "SEC"];
+
+// ---------- persisted state ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("shotlab:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("shotlab:" + k, JSON.stringify(v)); } catch (e) {} },
+};
+const DEFAULTS = () => ({
+  season: "2026", minPct: 40, cls: [], confs: [], search: "", filters: [], expr: "",
+  view: "overview", sort: { key: "ppg", dir: -1 }, custom: ["name", "team", "conf", "min_pct", "usg", "unast", "rim_unast", "j2_unast", "three_unast", "tpr", "ts"],
+  formulas: [],
+});
+const S = Object.assign(DEFAULTS(), store.get("state", {}));
+let limit = 100;
+const save = () => store.set("state", S);
+
+// ---------- expression language ----------
+function tokenize(src) {
+  const re = /\s*(?:(\d+\.?\d*|\.\d+)|([A-Za-z_][A-Za-z0-9_]*)|('[^']*'|"[^"]*")|(>=|<=|!=|==|<>|[=<>+\-*\/(),]))/y;
+  const out = []; let i = 0;
+  while (i < src.length) {
+    if (/^\s*$/.test(src.slice(i))) break;
+    re.lastIndex = i;
+    const m = re.exec(src);
+    if (!m) throw new Error(`Can't read "${src.slice(i).trim().slice(0, 12)}"`);
+    if (m[1] !== undefined) out.push({ t: "num", v: parseFloat(m[1]) });
+    else if (m[2] !== undefined) {
+      const w = m[2].toLowerCase();
+      if (["and", "or", "not", "in", "between", "true", "false", "null"].includes(w)) out.push({ t: "kw", v: w });
+      else out.push({ t: "id", v: w });
+    } else if (m[3] !== undefined) out.push({ t: "str", v: m[3].slice(1, -1) });
+    else out.push({ t: "op", v: m[4] === "==" ? "=" : m[4] === "<>" ? "!=" : m[4] });
+    i = re.lastIndex;
+  }
+  return out;
+}
+const FUNCS = {
+  abs: a => a == null ? null : Math.abs(a),
+  round: (a, d) => a == null ? null : +a.toFixed(d ?? 0),
+  min: (...a) => a.some(x => x == null) ? null : Math.min(...a),
+  max: (...a) => a.some(x => x == null) ? null : Math.max(...a),
+  coalesce: (...a) => a.find(x => x != null) ?? null,
+};
+function editDist(a, b) {
+  const d = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0]; d[0] = i;
+    for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; }
+  }
+  return d[b.length];
+}
+function compile(src, known) {
+  const toks = tokenize(src); let p = 0;
+  const peek = () => toks[p], next = () => toks[p++];
+  const isOp = v => peek() && peek().t === "op" && peek().v === v;
+  const isKw = v => peek() && peek().t === "kw" && peek().v === v;
+  const expect = (t, v) => { const k = next(); if (!k || k.t !== t || (v && k.v !== v)) throw new Error(`Expected "${v || t}"${k ? ` near "${k.v}"` : " at the end"}`); return k; };
+  const cmpVal = (a, b) => (typeof a === "string" || typeof b === "string") ? String(a).toLowerCase().localeCompare(String(b).toLowerCase()) : a - b;
+  function orE() { let l = andE(); while (isKw("or")) { next(); const a = l, b = andE(); l = r => a(r) === true || b(r) === true; } return l; }
+  function andE() { let l = notE(); while (isKw("and")) { next(); const a = l, b = notE(); l = r => a(r) === true && b(r) === true; } return l; }
+  function notE() { if (isKw("not")) { next(); const a = notE(); return r => { const v = a(r); return v == null ? null : !v; }; } return cmpE(); }
+  function cmpE() {
+    const l = addE();
+    if (isKw("between")) {
+      next(); const lo = addE(); expect("kw", "and"); const hi = addE();
+      return r => { const v = l(r), a = lo(r), b = hi(r); return v == null || a == null || b == null ? null : cmpVal(v, a) >= 0 && cmpVal(v, b) <= 0; };
+    }
+    let neg = false;
+    if (isKw("not") && toks[p + 1] && toks[p + 1].t === "kw" && toks[p + 1].v === "in") { next(); neg = true; }
+    if (isKw("in")) {
+      next(); expect("op", "("); const items = [addE()];
+      while (isOp(",")) { next(); items.push(addE()); }
+      expect("op", ")");
+      return r => { const v = l(r); if (v == null) return null; const hit = items.some(f => { const x = f(r); return x != null && cmpVal(v, x) === 0; }); return neg ? !hit : hit; };
+    }
+    const k = peek();
+    if (k && k.t === "op" && ["=", "!=", "<", ">", "<=", ">="].includes(k.v)) {
+      next(); const r2 = addE(), op = k.v;
+      return r => {
+        const a = l(r), b = r2(r); if (a == null || b == null) return null;
+        const c = cmpVal(a, b);
+        return op === "=" ? c === 0 : op === "!=" ? c !== 0 : op === "<" ? c < 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : c >= 0;
+      };
+    }
+    return l;
+  }
+  function addE() { let l = mulE(); while (isOp("+") || isOp("-")) { const op = next().v, a = l, b = mulE(); l = r => { const x = a(r), y = b(r); return x == null || y == null ? null : op === "+" ? x + y : x - y; }; } return l; }
+  function mulE() { let l = unE(); while (isOp("*") || isOp("/")) { const op = next().v, a = l, b = unE(); l = r => { const x = a(r), y = b(r); return x == null || y == null ? null : op === "*" ? x * y : (y === 0 ? null : x / y); }; } return l; }
+  function unE() { if (isOp("-")) { next(); const a = unE(); return r => { const v = a(r); return v == null ? null : -v; }; } return prim(); }
+  function prim() {
+    const k = next();
+    if (!k) throw new Error("Query ends too early");
+    if (k.t === "num") return () => k.v;
+    if (k.t === "str") return () => k.v;
+    if (k.t === "kw" && k.v === "true") return () => true;
+    if (k.t === "kw" && k.v === "false") return () => false;
+    if (k.t === "kw" && k.v === "null") return () => null;
+    if (k.t === "op" && k.v === "(") { const e = orE(); expect("op", ")"); return e; }
+    if (k.t === "id") {
+      if (isOp("(")) {
+        const f = FUNCS[k.v]; if (!f) throw new Error(`Unknown function "${k.v}"`);
+        next(); const args = [];
+        if (!isOp(")")) { args.push(addE()); while (isOp(",")) { next(); args.push(addE()); } }
+        expect("op", ")");
+        return r => f(...args.map(a => a(r)));
+      }
+      if (!known.has(k.v)) {
+        const near = [...known].map(c => [c, editDist(c, k.v)]).filter(([, d]) => d <= 3).sort((a, b) => a[1] - b[1]).slice(0, 3).map(([c]) => c);
+        throw new Error(`Unknown column "${k.v}"` + (near.length ? `. Did you mean ${near.join(", ")}?` : ""));
+      }
+      return r => r[k.v] ?? null;
+    }
+    throw new Error(`Unexpected "${k.v}"`);
+  }
+  const fn = orE();
+  if (p < toks.length) throw new Error(`Unexpected "${toks[p].v}"`);
+  return fn;
+}
+
+// ---------- data ----------
+let ROWS = [];
+function parseCSV(text) {
+  const rows = []; let row = [], f = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(f); f = ""; }
+    else if (c === "\n") { row.push(f); rows.push(row); row = []; f = ""; }
+    else if (c !== "\r") f += c;
+  }
+  if (f !== "" || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+function knownCols() { return new Set([...COLS.map(c => c.key), "id", ...S.formulas.map(f => f.name)]); }
+function applyFormulas() {
+  const known = knownCols();
+  for (const f of S.formulas) {
+    try { f.fn = compile(f.expr, known); f.err = null; } catch (e) { f.fn = null; f.err = e.message; }
+  }
+  for (const r of ROWS) for (const f of S.formulas) { if (f.fn) { const v = f.fn(r); r[f.name] = typeof v === "number" && isFinite(v) ? v : (v === true ? 1 : v === false ? 0 : null); } }
+  pctCache.clear();
+}
+const colMeta = k => COL[k] || (S.formulas.find(f => f.name === k) ? { key: k, label: k, group: "Formula", fmt: "2", dir: 1, desc: S.formulas.find(f => f.name === k).expr } : null);
+
+// ---------- percentiles for shading ----------
+const pctCache = new Map();
+function pctTable(season) {
+  if (pctCache.has(season)) return pctCache.get(season);
+  const pool = ROWS.filter(r => (season === "all" || String(r.season) === season) && r.min_pct >= 40);
+  const t = {};
+  const keys = [...COLS.filter(c => c.dir !== 0).map(c => c.key), ...S.formulas.map(f => f.name)];
+  for (const k of keys) t[k] = pool.map(r => r[k]).filter(v => v != null).sort((a, b) => a - b);
+  pctCache.set(season, t); return t;
+}
+function percentile(arr, v) {
+  if (!arr || !arr.length || v == null) return null;
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < v) lo = m + 1; else hi = m; }
+  let hi2 = lo; while (hi2 < arr.length && arr[hi2] === v) hi2++;
+  return ((lo + hi2) / 2) / arr.length;
+}
+function shade(p, dir) {
+  if (p == null || !dir) return "";
+  const q = dir > 0 ? p : 1 - p;
+  const d = Math.abs(q - 0.5) * 2;
+  if (d < 0.12) return "";
+  const amt = Math.round(d * 58);
+  return `background: color-mix(in oklab, var(${q > 0.5 ? "--hi" : "--lo"}) ${amt}%, var(--surface));`;
+}
+
+// ---------- formatting ----------
+function fmt(v, f) {
+  if (v == null || v === "") return "—";
+  if (f === "s") return esc(v);
+  if (f === "ht") return `${Math.floor(v / 12)}'${v % 12}"`;
+  if (f === "i") return Math.round(v).toLocaleString("en-US");
+  if (f === "2") return v.toFixed(2);
+  return v.toFixed(1);
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------- filtering ----------
+let exprFn = null;
+function compileExpr() {
+  const box = document.getElementById("expr"), msg = document.getElementById("exprMsg");
+  exprFn = null;
+  if (!S.expr.trim()) { box.classList.remove("bad"); msg.className = "msg"; msg.textContent = "Leave empty to skip. Hover a column header to see its name for queries."; return; }
+  try { exprFn = compile(S.expr, knownCols()); box.classList.remove("bad"); msg.className = "msg"; msg.textContent = "Query applied."; }
+  catch (e) { box.classList.add("bad"); msg.className = "msg err"; msg.textContent = e.message; }
+}
+function builderFns() {
+  const fns = [];
+  for (const f of S.filters) {
+    const m = colMeta(f.col); if (!m || f.val === "" || f.val == null) continue;
+    if (m.fmt === "s") {
+      const v = String(f.val).toLowerCase();
+      fns.push(r => { const x = String(r[f.col] ?? "").toLowerCase(); return f.op === "!=" ? x !== v : f.op === "~" ? x.includes(v) : x === v; });
+    } else {
+      const a = parseFloat(f.val), b = parseFloat(f.val2);
+      if (isNaN(a)) continue;
+      fns.push(r => {
+        const x = r[f.col]; if (x == null) return false;
+        switch (f.op) { case ">=": return x >= a; case "<=": return x <= a; case ">": return x > a; case "<": return x < a; case "=": return x === a; case "!=": return x !== a; case "btw": return isNaN(b) ? x >= a : x >= a && x <= b; }
+        return true;
+      });
+    }
+  }
+  return fns;
+}
+function currentRows() {
+  const bf = builderFns(), q = S.search.trim().toLowerCase();
+  const out = ROWS.filter(r =>
+    (S.season === "all" || String(r.season) === S.season) &&
+    (r.min_pct ?? 0) >= (S.minPct || 0) &&
+    (!S.cls.length || S.cls.includes(r.cls)) &&
+    (!S.confs.length || S.confs.includes(r.conf)) &&
+    (!q || r.name.toLowerCase().includes(q) || r.team.toLowerCase().includes(q)) &&
+    bf.every(f => f(r)) &&
+    (!exprFn || exprFn(r) === true));
+  const { key, dir } = S.sort, m = colMeta(key);
+  out.sort((a, b) => {
+    const x = a[key], y = b[key];
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (m && m.fmt === "s" ? String(x).localeCompare(String(y)) : x - y) * dir;
+  });
+  return out;
+}
+function visibleCols() {
+  let cols = S.view === "custom" ? S.custom.slice() : VIEWS[S.view].cols.slice();
+  if (S.season === "all" && !cols.includes("season")) cols.splice(1, 0, "season");
+  for (const f of S.formulas) if (f.fn && !cols.includes(f.name)) cols.push(f.name);
+  return cols.filter(c => colMeta(c));
+}
+
+// ---------- rendering ----------
+let cached = [];
+function refresh(keepLimit) {
+  if (!keepLimit) limit = 100;
+  cached = currentRows();
+  const cols = visibleCols(), pt = pctTable(S.season);
+  const sk = S.sort.key;
+  let h = "<table><thead><tr><th class='rk' scope='col'>#</th>";
+  for (const k of cols) {
+    const m = colMeta(k), cls = [m.fmt === "s" ? "s" : "", k === "name" ? "name" : "", k === sk ? "sorted" : ""].join(" ");
+    h += `<th scope="col" class="${cls}" data-k="${k}" data-arrow="${S.sort.dir > 0 ? "▲" : "▼"}" title="${esc(k)}: ${esc(m.desc)}"><span class="grp">${esc(m.group)}</span>${esc(m.label)}</th>`;
+  }
+  h += "</tr></thead><tbody>";
+  const n = Math.min(limit, cached.length);
+  for (let i = 0; i < n; i++) {
+    const r = cached[i];
+    h += `<tr><td class="rk">${i + 1}</td>`;
+    for (const k of cols) {
+      const m = colMeta(k), v = r[k];
+      if (k === "name") h += `<td class="s name"><a href="https://www.espn.com/mens-college-basketball/player/_/id/${r.id}" target="_blank" rel="noopener">${esc(v)}</a></td>`;
+      else h += `<td class="${m.fmt === "s" ? "s" : ""}" style="${shade(percentile(pt[k], v), m.dir)}">${fmt(v, m.fmt)}</td>`;
+    }
+    h += "</tr>";
+  }
+  if (!cached.length) h += `<tr><td colspan="${cols.length + 1}" class="s" style="padding:24px">No players match. Loosen a filter, or lower the minimum minutes.</td></tr>`;
+  h += "</tbody></table>";
+  document.getElementById("tablewrap").innerHTML = h;
+  const total = ROWS.filter(r => S.season === "all" || String(r.season) === S.season).length;
+  document.getElementById("count").innerHTML = `<b>${cached.length.toLocaleString("en-US")}</b> of ${total.toLocaleString("en-US")} player-seasons`;
+  document.getElementById("more").hidden = cached.length <= limit;
+  const usesLoc = cols.some(c => /^(close2|mid2|far2|c3|ab3)_/.test(c)) || /\b(close2|mid2|far2|c3|ab3)_/.test(S.expr) || S.filters.some(f => /^(close2|mid2|far2|c3|ab3)_/.test(f.col));
+  const note = document.getElementById("locNote");
+  note.hidden = !(usesLoc && S.season !== "2026");
+  note.textContent = "Distance columns only count located shots. ESPN has locations for about 98% of 2026 shots but only about 26% of 2025 and 5% of 2024 shots, so those seasons' distance numbers are partial (see Loc%).";
+  save();
+}
+
+function renderSeason() {
+  const seg = document.getElementById("seasonSeg");
+  seg.innerHTML = ["2026", "2025", "2024", "all"].map(s => `<button type="button" data-s="${s}" aria-pressed="${S.season === s}">${s === "all" ? "All" : s}</button>`).join("");
+}
+function renderCls() {
+  document.getElementById("clsChips").innerHTML = ["Fr", "So", "Jr", "Sr"].map(c => `<button type="button" class="chip" data-c="${c}" aria-pressed="${S.cls.includes(c)}">${c}</button>`).join("");
+}
+function renderConfs() {
+  const confs = [...new Set(ROWS.map(r => r.conf))].sort();
+  document.getElementById("confGrid").innerHTML = confs.map(c => `<button type="button" class="chip" data-conf="${esc(c)}" aria-pressed="${S.confs.includes(c)}">${esc(c)}</button>`).join("");
+  document.getElementById("confSummary").textContent = S.confs.length ? `Conferences: ${S.confs.length > 4 ? S.confs.length + " picked" : S.confs.join(", ")}` : "Conferences: all";
+}
+function colOptions(sel) {
+  const groups = {};
+  for (const c of COLS) if (c.key !== "name") (groups[c.group] ||= []).push(c);
+  for (const f of S.formulas) if (f.fn) (groups["Formula"] ||= []).push({ key: f.name, label: f.name });
+  return Object.entries(groups).map(([g, cs]) => `<optgroup label="${esc(g)}">${cs.map(c => `<option value="${c.key}" ${c.key === sel ? "selected" : ""}>${esc(c.label)} (${c.key})</option>`).join("")}</optgroup>`).join("");
+}
+function renderBuilder() {
+  const box = document.getElementById("frows");
+  box.innerHTML = S.filters.map((f, i) => {
+    const m = colMeta(f.col) || COL.ppg, isS = m.fmt === "s";
+    const ops = isS ? [["=", "is"], ["!=", "is not"], ["~", "contains"]] : [[">=", "≥"], ["<=", "≤"], [">", ">"], ["<", "<"], ["=", "="], ["btw", "between"]];
+    return `<div class="frow" data-i="${i}">
+      <select class="col" data-f="col" aria-label="Column">${colOptions(f.col)}</select>
+      <select data-f="op" aria-label="Operator">${ops.map(([v, l]) => `<option value="${v}" ${f.op === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <input data-f="val" type="${isS ? "text" : "number"}" step="any" value="${esc(f.val ?? "")}" aria-label="Value">
+      ${f.op === "btw" ? `<span>and</span><input data-f="val2" type="number" step="any" value="${esc(f.val2 ?? "")}" aria-label="Upper value">` : ""}
+      <button class="x" type="button" data-f="del" aria-label="Remove filter">×</button>
+    </div>`;
+  }).join("") || `<div class="msg">No filters yet. Add one, pick a preset, or write a query below.</div>`;
+}
+function renderViews() {
+  document.getElementById("views").innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button type="button" data-v="${k}" aria-pressed="${S.view === k}">${v.label}</button>`).join("");
+  document.getElementById("colDrop").hidden = S.view !== "custom";
+  const groups = {};
+  for (const c of COLS) (groups[c.group] ||= []).push(c);
+  document.getElementById("colPick").innerHTML = Object.entries(groups).map(([g, cs]) => `<h4>${esc(g)}</h4>` + cs.map(c => `<label><input type="checkbox" data-col="${c.key}" ${S.custom.includes(c.key) ? "checked" : ""}> ${esc(c.label)}</label>`).join("")).join("");
+}
+function renderFormulas() {
+  document.getElementById("fList").innerHTML = S.formulas.map((f, i) => `<span class="chip" style="display:inline-flex;gap:6px;align-items:center"><span class="mono">${esc(f.name)} = ${esc(f.expr)}</span>${f.err ? `<span style="color:var(--err)">(${esc(f.err)})</span>` : ""}<button class="x" type="button" data-fdel="${i}" aria-label="Remove ${esc(f.name)}">×</button></span>`).join("");
+}
+function renderGloss() {
+  document.getElementById("glossCols").innerHTML = [...new Set(COLS.map(c => c.group))].map(g =>
+    `<dl><dt style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--ink)">${esc(g)}</dt>${COLS.filter(c => c.group === g).map(c => `<dt>${c.key}</dt><dd>${esc(c.desc)}</dd>`).join("")}</dl>`).join("");
+}
+function renderAll() {
+  renderSeason(); renderCls(); renderConfs(); renderBuilder(); renderViews(); renderFormulas();
+  document.getElementById("minPct").value = S.minPct;
+  document.getElementById("search").value = S.search;
+  document.getElementById("expr").value = S.expr;
+  compileExpr(); refresh();
+}
+
+// ---------- events ----------
+let t;
+const debounced = fn => { clearTimeout(t); t = setTimeout(fn, 160); };
+document.getElementById("seasonSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; S.season = b.dataset.s; renderSeason(); refresh(); });
+document.getElementById("clsChips").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; const c = b.dataset.c; S.cls = S.cls.includes(c) ? S.cls.filter(x => x !== c) : [...S.cls, c]; renderCls(); refresh(); });
+document.getElementById("confGrid").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; const c = b.dataset.conf; S.confs = S.confs.includes(c) ? S.confs.filter(x => x !== c) : [...S.confs, c]; renderConfs(); refresh(); });
+document.getElementById("confHigh").addEventListener("click", () => { S.confs = HIGH_MAJORS.slice(); renderConfs(); refresh(); });
+document.getElementById("confClear").addEventListener("click", () => { S.confs = []; renderConfs(); refresh(); });
+document.addEventListener("click", e => { for (const d of document.querySelectorAll("details.drop[open]")) if (!d.contains(e.target)) d.open = false; });
+document.getElementById("minPct").addEventListener("input", e => { S.minPct = parseFloat(e.target.value) || 0; debounced(refresh); });
+document.getElementById("search").addEventListener("input", e => { S.search = e.target.value; debounced(refresh); });
+document.getElementById("expr").addEventListener("input", e => { S.expr = e.target.value; debounced(() => { compileExpr(); refresh(); }); });
+document.getElementById("addFilter").addEventListener("click", () => { S.filters.push({ col: "ppg", op: ">=", val: "", val2: "" }); renderBuilder(); const ins = document.querySelectorAll("#frows .frow select.col"); ins[ins.length - 1]?.focus(); save(); });
+const frows = document.getElementById("frows");
+frows.addEventListener("change", e => {
+  const row = e.target.closest(".frow"); if (!row) return;
+  const f = S.filters[+row.dataset.i], k = e.target.dataset.f;
+  if (k === "col") { const wasS = colMeta(f.col)?.fmt === "s"; f.col = e.target.value; const isS = colMeta(f.col).fmt === "s"; if (wasS !== isS) { f.op = isS ? "=" : ">="; f.val = ""; f.val2 = ""; } renderBuilder(); }
+  else if (k === "op") { f.op = e.target.value; renderBuilder(); }
+  refresh();
+});
+frows.addEventListener("input", e => { const row = e.target.closest(".frow"); if (!row) return; const k = e.target.dataset.f; if (k === "val" || k === "val2") { S.filters[+row.dataset.i][k] = e.target.value; debounced(refresh); } });
+frows.addEventListener("click", e => { if (e.target.dataset.f === "del") { S.filters.splice(+e.target.closest(".frow").dataset.i, 1); renderBuilder(); refresh(); } });
+document.getElementById("views").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; S.view = b.dataset.v; renderViews(); refresh(); });
+document.getElementById("colPick").addEventListener("change", e => {
+  const k = e.target.dataset.col; if (!k) return;
+  S.custom = e.target.checked ? [...S.custom, k] : S.custom.filter(c => c !== k);
+  S.custom.sort((a, b) => COLS.findIndex(c => c.key === a) - COLS.findIndex(c => c.key === b));
+  refresh();
+});
+document.getElementById("tablewrap").addEventListener("click", e => {
+  const th = e.target.closest("th[data-k]"); if (!th) return;
+  const k = th.dataset.k, m = colMeta(k);
+  S.sort = S.sort.key === k ? { key: k, dir: -S.sort.dir } : { key: k, dir: m.fmt === "s" ? 1 : -1 };
+  refresh();
+});
+document.getElementById("moreBtn").addEventListener("click", () => { limit += 100; refresh(true); });
+const preset = document.getElementById("preset");
+preset.innerHTML += PRESETS.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
+preset.addEventListener("change", () => {
+  const p = PRESETS[+preset.value]; if (!p) return;
+  S.expr = p.expr; S.view = p.view; S.sort = { key: p.sort, dir: -1 }; S.filters = []; S.search = "";
+  if (p.season) S.season = p.season;
+  preset.value = ""; renderAll();
+});
+document.getElementById("fAdd").addEventListener("click", () => {
+  const name = document.getElementById("fName").value.trim().toLowerCase(), expr = document.getElementById("fExpr").value.trim(), msg = document.getElementById("fMsg");
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) { msg.className = "msg err"; msg.textContent = "Name the column with letters, digits and underscores, starting with a letter."; return; }
+  if (COL[name] || S.formulas.some(f => f.name === name)) { msg.className = "msg err"; msg.textContent = `"${name}" is already a column.`; return; }
+  try { compile(expr, knownCols()); } catch (e) { msg.className = "msg err"; msg.textContent = e.message; return; }
+  S.formulas.push({ name, expr }); applyFormulas();
+  msg.className = "msg"; msg.textContent = `Added ${name}. It shows at the end of every column set.`;
+  document.getElementById("fName").value = ""; document.getElementById("fExpr").value = "";
+  renderFormulas(); renderBuilder(); compileExpr(); refresh();
+});
+document.getElementById("fList").addEventListener("click", e => {
+  const i = e.target.dataset.fdel; if (i == null) return;
+  const name = S.formulas[+i].name; S.formulas.splice(+i, 1);
+  for (const r of ROWS) delete r[name];
+  if (S.sort.key === name) S.sort = { key: "ppg", dir: -1 };
+  applyFormulas(); renderFormulas(); renderBuilder(); compileExpr(); refresh();
+});
+async function copyText(text, btn, label) {
+  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+  catch (e) { btn.textContent = "Copy blocked"; }
+  setTimeout(() => btn.textContent = label, 1400);
+}
+document.getElementById("copyQ").addEventListener("click", e => {
+  const parts = [];
+  if (S.season !== "all") parts.push(`season = ${S.season}`);
+  if (S.minPct) parts.push(`min_pct >= ${S.minPct}`);
+  if (S.cls.length) parts.push(`cls in (${S.cls.map(c => `'${c}'`).join(", ")})`);
+  if (S.confs.length) parts.push(`conf in (${S.confs.map(c => `'${c}'`).join(", ")})`);
+  for (const f of S.filters) if (f.val !== "") parts.push(f.op === "btw" ? `${f.col} between ${f.val} and ${f.val2}` : `${f.col} ${f.op === "~" ? "=" : f.op} ${colMeta(f.col).fmt === "s" ? `'${f.val}'` : f.val}`);
+  if (S.expr.trim()) parts.push(`(${S.expr.trim()})`);
+  copyText(parts.join(" and ") || "(no filters)", e.target, "Copy query");
+});
+document.getElementById("copyCsv").addEventListener("click", e => {
+  const cols = visibleCols();
+  const q = v => v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+  copyText([cols.join(","), ...cached.map(r => cols.map(c => q(r[c])).join(","))].join("\n"), e.target, "Copy results as CSV");
+});
+document.getElementById("reset").addEventListener("click", () => {
+  for (const f of S.formulas) for (const r of ROWS) delete r[f.name];
+  Object.assign(S, DEFAULTS()); applyFormulas(); renderAll();
+});
+
+// ---------- boot ----------
+(async function boot() {
+  try {
+    const res = await fetch("data/players.csv");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const [head, ...body] = parseCSV(await res.text());
+    const textCols = new Set(["name", "team", "conf", "cls", "pos"]);
+    ROWS = body.filter(r => r.length === head.length).map(r => {
+      const o = {};
+      head.forEach((h, i) => { const v = r[i]; o[h] = textCols.has(h) ? (v === "" ? null : v) : (v === "" ? null : +v); });
+      o.name ??= ""; o.team ??= "";
+      return o;
+    });
+    if (!COL[S.sort.key] && !S.formulas.some(f => f.name === S.sort.key)) S.sort = { key: "ppg", dir: -1 };
+    applyFormulas(); renderGloss(); renderAll();
+  } catch (e) {
+    document.getElementById("tablewrap").innerHTML = `<div class="loading">Couldn't load the player data (${esc(e.message)}). Reload the page to try again.</div>`;
+    document.getElementById("count").textContent = "No data";
+  }
+})();
+</script>
+</body>
+</html>
