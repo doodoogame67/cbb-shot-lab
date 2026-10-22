@@ -1,27 +1,26 @@
--- Builds site/data/players.parquet (one row per player-season-team) from the
--- sportsdataverse ESPN files in raw/. Run from the project root:
---   tools\duckdb.exe -c ".read pipeline/build.sql"
+-- Builds the per-season game-level files the site aggregates in the browser.
+-- Run from the project root:  duckdb -c ".read pipeline/build.sql"
 --
--- Scope matches Barttorvik: D1 vs D1 games only, regular season + postseason.
+-- Output (one folder per season, hive-style):
+--   site/data/teams/season=YYYY/part0.csv    tid, team, conf, rank
+--   site/data/players/season=YYYY/part0.csv  pid, name, ht, wt, cls, age, st, pos, dy, dp
+--   site/data/tgames/season=YYYY/part0.csv   one row per team-game: box totals + date/venue/conf flag/opponent
+--   site/data/pgames/season=YYYY/part0.csv   one row per player-game: box line + play-by-play shot zones
+--   site/data/seasons.csv                    season list with data-quality notes
 --
--- Shot zones
---   rim    layups, dunks, tips (ESPN shot type, same idea as Bart's "rim")
---   j2     every other 2 (jumpers, floaters, hooks) = "non-rim 2s"
---   close2 / mid2 / far2   j2 split by distance: <8ft, 8-16ft, 16ft+ (NBA.com's
---          "long mid-range" cutoff; only ~12% of college non-rim 2s are 16ft+)
---   three  all 3PA; c3 = corner 3, ab3 = above-the-break 3
--- Distances use ESPN's raw coords (feet, x 0-50 across, y from baseline,
--- hoop at ~(25, 2)). Locations are only reliable for 2026 (~98% of shots);
--- 2025 has ~29%, 2024 ~7%, so band stats carry a loc_cov column.
+-- Scope matches Barttorvik: D1 vs D1 games, regular season + postseason.
 --
--- "Assisted" only exists on makes, so unast = % of MAKES that were unassisted.
+-- Shot zones (play-by-play; ESPN labels changed over the years, both spellings handled)
+--   rim (Bart's "Close 2") = layups, dunks, tips;  j2 (Bart's "Far 2") = every other 2;  3 = threes
+--   distance bands need shot coordinates: lt8 / mid (8-16ft) / long (16ft+) 2s, corner vs above-break 3s
+-- "Unassisted" counts made shots with no assist credited (PBP only records assists on makes).
 
--- D1 teams per season, with short conference names
+-- ---------- teams ----------
 CREATE OR REPLACE TEMP TABLE d1 AS
 SELECT season, team_id::INT AS team_id,
     CASE replace(conference_id, 'mbb:', '')
         WHEN 'acc' THEN 'ACC' WHEN 'big-ten' THEN 'B10' WHEN 'big-12' THEN 'B12'
-        WHEN 'big-east' THEN 'BE' WHEN 'sec' THEN 'SEC' WHEN 'pac-12' THEN 'P12'
+        WHEN 'big-east' THEN 'BE' WHEN 'sec' THEN 'SEC' WHEN 'pac-12' THEN 'P12' WHEN 'pac-10' THEN 'P10'
         WHEN 'american' THEN 'Amer' WHEN 'atlantic-10' THEN 'A10' WHEN 'mountain-west' THEN 'MWC'
         WHEN 'wcc' THEN 'WCC' WHEN 'mvc' THEN 'MVC' WHEN 'cusa' THEN 'CUSA'
         WHEN 'sun-belt' THEN 'SB' WHEN 'mac' THEN 'MAC' WHEN 'caa' THEN 'CAA'
@@ -30,13 +29,18 @@ SELECT season, team_id::INT AS team_id,
         WHEN 'meac' THEN 'MEAC' WHEN 'nec' THEN 'NEC' WHEN 'ovc' THEN 'OVC'
         WHEN 'patriot' THEN 'Pat' WHEN 'socon' THEN 'SC' WHEN 'southland' THEN 'Slnd'
         WHEN 'summit' THEN 'Sum' WHEN 'swac' THEN 'SWAC' WHEN 'wac' THEN 'WAC'
-        WHEN 'asun' THEN 'ASun' WHEN 'america-east' THEN 'AE' WHEN 'independents' THEN 'Ind'
-        ELSE replace(conference_id, 'mbb:', '')
+        WHEN 'asun' THEN 'ASun' WHEN 'america-east' THEN 'AE' WHEN 'independents' THEN 'ind'
+        WHEN 'great-west' THEN 'GWC'
+        ELSE upper(replace(conference_id, 'mbb:', ''))
     END AS conf
 FROM 'raw/mbb_team_group_seasons.parquet'
 WHERE subdivision_id = 'mbb:d1';
 
--- Player box rows from D1 vs D1 games
+CREATE OR REPLACE TEMP TABLE ratings AS
+SELECT season::INT AS season, team_id::INT AS team_id, rank::INT AS rank
+FROM read_parquet('raw/mbb_ratings_*.parquet', union_by_name = true);
+
+-- ---------- box score rows from D1 vs D1 games ----------
 CREATE OR REPLACE TEMP TABLE box AS
 SELECT pb.*
 FROM read_parquet('raw/player_box_*.parquet', union_by_name = true) pb
@@ -44,182 +48,186 @@ JOIN d1 a ON a.season = pb.season AND a.team_id = pb.team_id
 JOIN d1 b ON b.season = pb.season AND b.team_id = pb.opponent_team_id
 WHERE pb.season_type IN (2, 3);
 
--- Team totals per game (used for team and opponent context in rate stats)
-CREATE OR REPLACE TEMP TABLE tg AS
-SELECT season, game_id, team_id,
-    sum(minutes) AS mp, sum(field_goals_made) AS fgm, sum(field_goals_attempted) AS fga,
-    sum(three_point_field_goals_attempted) AS tpa, sum(free_throws_attempted) AS fta,
-    sum(offensive_rebounds) AS orb, sum(defensive_rebounds) AS drb, sum(turnovers) AS tov
-FROM box
-GROUP BY ALL;
+CREATE OR REPLACE TEMP TABLE sched AS
+SELECT DISTINCT ON (game_id) game_id, coalesce(neutral_site, false) AS neutral,
+    coalesce(conference_competition, false) AS conf_game
+FROM read_parquet('raw/mbb_schedule_*.parquet', union_by_name = true);
 
--- Season box totals per player-team, with team/opponent totals over the games he played
-CREATE OR REPLACE TEMP TABLE pbox AS
-SELECT b.season, b.athlete_id, b.team_id,
-    arg_max(b.athlete_display_name, b.game_date) AS name,
-    arg_max(b.team_location, b.game_date) AS team,
-    count(*) AS g, sum(b.starter::INT) AS gs, sum(b.minutes) AS mp,
-    sum(b.points) AS pts, sum(b.field_goals_made) AS fgm, sum(b.field_goals_attempted) AS fga,
+-- team names: most recent display per season
+CREATE OR REPLACE TEMP TABLE tnames AS
+SELECT season, team_id, arg_max(team_location, game_date) AS team
+FROM box GROUP BY ALL;
+
+-- ---------- team-game totals ----------
+CREATE OR REPLACE TEMP TABLE tg AS
+SELECT b.season, b.game_id, b.team_id,
+    any_value(b.opponent_team_id) AS opp,
+    strftime(any_value(b.game_date), '%Y%m%d')::INT AS dt,
+    CASE WHEN any_value(s.neutral) THEN 0 WHEN any_value(b.home_away) = 'home' THEN 1 ELSE -1 END AS loc,
+    any_value(s.conf_game)::INT AS cg,
+    round(sum(b.minutes))::INT AS min,
+    sum(b.field_goals_made) AS fgm, sum(b.field_goals_attempted) AS fga,
     sum(b.three_point_field_goals_made) AS tpm, sum(b.three_point_field_goals_attempted) AS tpa,
     sum(b.free_throws_made) AS ftm, sum(b.free_throws_attempted) AS fta,
     sum(b.offensive_rebounds) AS orb, sum(b.defensive_rebounds) AS drb,
-    sum(b.assists) AS ast, sum(b.steals) AS stl, sum(b.blocks) AS blk,
-    sum(b.turnovers) AS tov, sum(b.fouls) AS pf,
-    sum(t.mp) AS t_mp, sum(t.fgm) AS t_fgm, sum(t.fga) AS t_fga, sum(t.fta) AS t_fta,
-    sum(t.tov) AS t_tov, sum(t.orb) AS t_orb, sum(t.drb) AS t_drb,
-    sum(o.fga) AS o_fga, sum(o.tpa) AS o_tpa, sum(o.orb) AS o_orb, sum(o.drb) AS o_drb,
-    sum(o.fga - o.orb + o.tov + 0.475 * o.fta) AS o_poss
+    sum(b.assists) AS ast, sum(b.turnovers) AS tov, sum(b.steals) AS stl,
+    sum(b.blocks) AS blk, sum(b.fouls) AS pf, sum(b.points) AS pts
 FROM box b
-JOIN tg t ON t.season = b.season AND t.game_id = b.game_id AND t.team_id = b.team_id
-JOIN tg o ON o.season = b.season AND o.game_id = b.game_id AND o.team_id = b.opponent_team_id
-WHERE NOT coalesce(b.did_not_play, false) AND b.minutes > 0
-GROUP BY b.season, b.athlete_id, b.team_id;
+LEFT JOIN sched s ON s.game_id = b.game_id
+GROUP BY b.season, b.game_id, b.team_id
+-- drop games with broken box scores (no minutes recorded)
+HAVING sum(b.minutes) >= 150;
 
--- Field goal attempts from PBP, with zone labels
+-- ---------- play-by-play shots ----------
 CREATE OR REPLACE TEMP TABLE shots AS
 WITH s AS (
-    SELECT season, game_id, team_id, athlete_id_1 AS pid, athlete_id_2 AS ast_id,
-        scoring_play AS made, score_value AS pv,
-        CASE WHEN type_text IN ('LayUpShot', 'DunkShot', 'TipShot') THEN 'rim' END AS rimtype,
+    SELECT game_id, team_id, athlete_id_1 AS pid, athlete_id_2 AS ast_id,
+        coalesce(scoring_play, false) AS made,
+        (score_value = 3 OR type_text = 'Three Point Jump Shot') AS is3,
+        type_text IN ('LayUpShot', 'LayupShot', 'DunkShot', 'TipShot') AS rimtype,
+        type_text = 'DunkShot' AS dunk,
         coordinate_x_raw AS x, coordinate_y_raw AS y,
         CASE WHEN coordinate_x_raw BETWEEN 0 AND 50 AND coordinate_y_raw BETWEEN -6 AND 94
                   AND NOT (type_text = 'JumpShot' AND coordinate_x_raw = 25 AND coordinate_y_raw = 0)
              THEN sqrt(pow(coordinate_x_raw - 25, 2) + pow(coordinate_y_raw - 2, 2)) END AS d
     FROM read_parquet('raw/shots_*.parquet', union_by_name = true)
-    WHERE type_text <> 'MadeFreeThrow' AND athlete_id_1 IS NOT NULL
-      AND game_id IN (SELECT DISTINCT game_id FROM box)
+    WHERE type_text IN ('JumpShot', 'LayUpShot', 'LayupShot', 'DunkShot', 'TipShot', 'Three Point Jump Shot', 'Shot')
+      AND athlete_id_1 IS NOT NULL
+      AND game_id IN (SELECT game_id FROM tg)
 )
 SELECT *,
-    -- drop locations that contradict ESPN's own 2/3 label (placeholder coords)
-    CASE WHEN (pv = 3 AND d < 18) OR (pv = 2 AND d > 23) THEN NULL ELSE d END AS dist,
-    CASE WHEN pv = 3 THEN 'three' WHEN rimtype = 'rim' THEN 'rim' ELSE 'j2' END AS zone
+    CASE WHEN is3 THEN 'three' WHEN rimtype THEN 'rim' ELSE 'j2' END AS zone,
+    -- drop locations that contradict the 2/3 label (placeholder coordinates)
+    CASE WHEN (is3 AND d < 18) OR (NOT is3 AND d > 23) THEN NULL ELSE d END AS dist
 FROM s;
 
--- Long form: one row per player-team-zone. A shot counts in its zone plus its band.
-CREATE OR REPLACE TEMP TABLE zlong AS
-WITH tagged AS (
-    SELECT season, pid, team_id, made, ast_id,
-        list_filter([
-            'fg', zone,
-            CASE WHEN dist IS NOT NULL THEN 'loc' END,
-            CASE WHEN zone = 'j2' AND dist IS NOT NULL THEN 'j2loc' END,
-            CASE WHEN zone = 'j2' AND dist < 8 THEN 'close2'
-                 WHEN zone = 'j2' AND dist < 16 THEN 'mid2'
-                 WHEN zone = 'j2' AND dist >= 16 THEN 'far2' END,
-            CASE WHEN zone = 'three' AND dist IS NOT NULL THEN 'threeloc' END,
-            CASE WHEN zone = 'three' AND dist IS NOT NULL AND abs(x - 25) >= 20 AND y <= 7 THEN 'c3'
-                 WHEN zone = 'three' AND dist IS NOT NULL THEN 'ab3' END
-        ], lambda z: z IS NOT NULL) AS zones
-    FROM shots
-)
-SELECT season, pid, team_id, z,
-    count(*) AS a,
-    sum(made::INT) AS m,
-    sum((made AND ast_id IS NULL)::INT) AS um,
-    round(100.0 * sum(made::INT) / count(*), 1) AS pct,
-    round(100.0 * sum((made AND ast_id IS NULL)::INT) / nullif(sum(made::INT), 0), 1) AS unast
-FROM tagged, unnest(zones) AS t(z)
-GROUP BY ALL;
+CREATE OR REPLACE TEMP TABLE pbp_games AS SELECT DISTINCT game_id FROM shots;
 
-CREATE OR REPLACE TEMP TABLE zwide AS
-PIVOT zlong ON z IN ('fg', 'rim', 'j2', 'close2', 'mid2', 'far2', 'three', 'c3', 'ab3', 'loc', 'j2loc', 'threeloc')
-USING first(a) AS a, first(m) AS m, first(um) AS um, first(pct) AS pct, first(unast) AS unast
-GROUP BY season, pid, team_id;
-
--- Passer side: what kind of shots does a player's assists create?
-CREATE OR REPLACE TEMP TABLE astz AS
-SELECT season, ast_id AS pid, team_id,
-    count(*) AS ast_pbp,
-    round(100.0 * count(*) FILTER (zone = 'rim') / count(*), 1) AS ast_rim_shr,
-    round(100.0 * count(*) FILTER (zone = 'j2') / count(*), 1) AS ast_j2_shr,
-    round(100.0 * count(*) FILTER (zone = 'three') / count(*), 1) AS ast_three_shr
+CREATE OR REPLACE TEMP TABLE shotpg AS
+SELECT game_id, team_id, pid,
+    count(*) FILTER (zone = 'rim' AND made) AS rm, count(*) FILTER (zone = 'rim') AS ra,
+    count(*) FILTER (zone = 'rim' AND made AND ast_id IS NULL) AS rum,
+    count(*) FILTER (dunk AND made) AS dm, count(*) FILTER (dunk) AS da,
+    count(*) FILTER (zone = 'j2' AND made) AS jm, count(*) FILTER (zone = 'j2') AS ja,
+    count(*) FILTER (zone = 'j2' AND made AND ast_id IS NULL) AS jum,
+    count(*) FILTER (zone = 'three' AND made) AS t3m, count(*) FILTER (zone = 'three') AS t3a,
+    count(*) FILTER (zone = 'three' AND made AND ast_id IS NULL) AS t3um,
+    count(*) FILTER (dist IS NOT NULL) AS lf,
+    count(*) FILTER (zone = 'j2' AND dist IS NOT NULL) AS jl,
+    count(*) FILTER (zone = 'three' AND dist IS NOT NULL) AS tl,
+    count(*) FILTER (zone = 'j2' AND dist < 8 AND made) AS sm, count(*) FILTER (zone = 'j2' AND dist < 8) AS sa,
+    count(*) FILTER (zone = 'j2' AND dist >= 8 AND dist < 16 AND made) AS mm,
+    count(*) FILTER (zone = 'j2' AND dist >= 8 AND dist < 16) AS ma,
+    count(*) FILTER (zone = 'j2' AND dist >= 8 AND dist < 16 AND made AND ast_id IS NULL) AS mum,
+    count(*) FILTER (zone = 'j2' AND dist >= 16 AND made) AS lm, count(*) FILTER (zone = 'j2' AND dist >= 16) AS la,
+    count(*) FILTER (zone = 'j2' AND dist >= 16 AND made AND ast_id IS NULL) AS lum,
+    count(*) FILTER (zone = 'three' AND dist IS NOT NULL AND abs(x - 25) >= 20 AND y <= 7 AND made) AS cm,
+    count(*) FILTER (zone = 'three' AND dist IS NOT NULL AND abs(x - 25) >= 20 AND y <= 7) AS ca,
+    count(*) FILTER (zone = 'three' AND dist IS NOT NULL AND NOT (abs(x - 25) >= 20 AND y <= 7) AND made) AS bm,
+    count(*) FILTER (zone = 'three' AND dist IS NOT NULL AND NOT (abs(x - 25) >= 20 AND y <= 7)) AS ba
 FROM shots
-WHERE made AND ast_id IS NOT NULL
 GROUP BY ALL;
 
--- Roster info (2025+ only in the source)
-CREATE OR REPLACE TEMP TABLE ros AS
-SELECT season, athlete_id::INT AS athlete_id,
-    any_value(CASE experience_display_value
-        WHEN 'Freshman' THEN 'Fr' WHEN 'Sophomore' THEN 'So'
-        WHEN 'Junior' THEN 'Jr' WHEN 'Senior' THEN 'Sr' END) AS cls,
-    any_value(position_abbreviation) AS pos,
-    any_value(TRY_CAST(regexp_extract(height, '(\d+)''', 1) AS INT) * 12
-        + TRY_CAST(regexp_extract(height, '(\d+)"', 1) AS INT)) AS ht
-FROM read_parquet('raw/rosters_*.parquet', union_by_name = true)
+-- passer side: assists by the zone of the shot they created
+CREATE OR REPLACE TEMP TABLE astpg AS
+SELECT game_id, team_id, ast_id AS pid,
+    count(*) FILTER (zone = 'rim') AS ar, count(*) FILTER (zone = 'j2') AS aj, count(*) FILTER (zone = 'three') AS a3
+FROM shots WHERE made AND ast_id IS NOT NULL
 GROUP BY ALL;
 
-CREATE OR REPLACE TABLE players AS
-SELECT
-    p.athlete_id AS id, p.season, p.name, p.team, d1.conf,
-    r.cls, r.pos, r.ht,
-    p.g, p.gs,
-    round(p.mp / p.g, 1) AS mpg,
-    round(100.0 * p.mp / (p.t_mp / 5), 1) AS min_pct,
-    round(p.pts / p.g, 1) AS ppg,
-    round((p.orb + p.drb) / p.g, 1) AS rpg,
-    round(p.ast / p.g, 1) AS apg,
+-- ---------- player-game rows ----------
+CREATE OR REPLACE TEMP TABLE pg AS
+SELECT b.season, b.athlete_id AS pid, b.game_id AS gid, b.team_id AS tid,
+    coalesce(b.starter, false)::INT AS gs, round(b.minutes)::INT AS min,
+    b.field_goals_made AS fgm, b.field_goals_attempted AS fga,
+    b.three_point_field_goals_made AS tpm, b.three_point_field_goals_attempted AS tpa,
+    b.free_throws_made AS ftm, b.free_throws_attempted AS fta,
+    b.offensive_rebounds AS orb, b.defensive_rebounds AS drb, b.assists AS ast,
+    b.turnovers AS tov, b.steals AS stl, b.blocks AS blk, b.fouls AS pf, b.points AS pts,
+    (p.game_id IS NOT NULL)::INT AS pbp,
+    s.rm, s.ra, s.rum, s.dm, s.da, s.jm, s.ja, s.jum, s.t3m, s.t3a, s.t3um,
+    s.lf, s.jl, s.tl, s.sm, s.sa, s.mm, s.ma, s.mum, s.lm, s.la, s.lum, s.cm, s.ca, s.bm, s.ba,
+    a.ar, a.aj, a.a3
+FROM box b
+JOIN tg t ON t.game_id = b.game_id AND t.team_id = b.team_id
+LEFT JOIN pbp_games p ON p.game_id = b.game_id
+LEFT JOIN shotpg s ON s.game_id = b.game_id AND s.team_id = b.team_id AND s.pid = b.athlete_id
+LEFT JOIN astpg a ON a.game_id = b.game_id AND a.team_id = b.team_id AND a.pid = b.athlete_id
+WHERE NOT coalesce(b.did_not_play, false) AND b.minutes > 0;
 
-    -- efficiency / usage (Basketball-Reference style, using team & opp totals from games played)
-    round(100.0 * (p.fga + 0.44 * p.fta + p.tov) * (p.t_mp / 5)
-        / nullif(p.mp * (p.t_fga + 0.44 * p.t_fta + p.t_tov), 0), 1) AS usg,
-    round(100.0 * p.pts / nullif(2 * (p.fga + 0.44 * p.fta), 0), 1) AS ts,
-    round(100.0 * (p.fgm + 0.5 * p.tpm) / nullif(p.fga, 0), 1) AS efg,
-    round(100.0 * p.ast / nullif((p.mp / (p.t_mp / 5)) * p.t_fgm - p.fgm, 0), 1) AS ast_pct,
-    round(100.0 * p.tov / nullif(p.fga + 0.44 * p.fta + p.tov, 0), 1) AS to_pct,
-    round(p.ast / nullif(p.tov, 0), 2) AS ast_to,
-    round(100.0 * p.orb * (p.t_mp / 5) / nullif(p.mp * (p.t_orb + p.o_drb), 0), 1) AS or_pct,
-    round(100.0 * p.drb * (p.t_mp / 5) / nullif(p.mp * (p.t_drb + p.o_orb), 0), 1) AS dr_pct,
-    round(100.0 * p.stl * (p.t_mp / 5) / nullif(p.mp * p.o_poss, 0), 1) AS stl_pct,
-    round(100.0 * p.blk * (p.t_mp / 5) / nullif(p.mp * (p.o_fga - p.o_tpa), 0), 1) AS blk_pct,
-    round(100.0 * p.fta / nullif(p.fga, 0), 1) AS ftr,
-    round(100.0 * p.tpa / nullif(p.fga, 0), 1) AS tpr,
-    round(100.0 * p.ftm / nullif(p.fta, 0), 1) AS ft_pct,
-    round(100.0 * (p.fgm - p.tpm) / nullif(p.fga - p.tpa, 0), 1) AS fg2_pct,
-    round(100.0 * p.tpm / nullif(p.tpa, 0), 1) AS fg3_pct,
-    round(40.0 * p.pts / p.mp, 1) AS pts40,
-    round(40.0 * (p.orb + p.drb) / p.mp, 1) AS reb40,
-    round(40.0 * p.ast / p.mp, 1) AS ast40,
-    round(40.0 * p.stl / p.mp, 1) AS stl40,
-    round(40.0 * p.blk / p.mp, 1) AS blk40,
-    round(40.0 * p.pf / p.mp, 1) AS pf40,
-    round(40.0 * p.fta / p.mp, 1) AS fta40,
-    p.fga, p.tpa, p.fta, p.pts, p.ast, p.tov, p.stl, p.blk, p.orb, p.drb,
+-- ---------- player bios ----------
+-- ESPN's player_core holds each player's LATEST listing (height, weight, class, age),
+-- so class per season = final class minus seasons remaining.
+CREATE OR REPLACE TEMP TABLE seasons_played AS
+SELECT pid, min(season) AS first_season, max(season) AS last_season FROM pg GROUP BY pid;
 
-    -- PBP shot profile
-    z.fg_a AS pbp_fga,
-    z.fg_unast AS unast,
-    round(100.0 * coalesce(z.loc_a, 0) / nullif(z.fg_a, 0), 1) AS loc_cov,
-    coalesce(z.rim_a, 0) AS rim_a, coalesce(z.rim_m, 0) AS rim_m, z.rim_pct, z.rim_unast,
-    round(100.0 * coalesce(z.rim_a, 0) / nullif(z.fg_a, 0), 1) AS rim_rate,
-    round(40.0 * coalesce(z.rim_um, 0) / p.mp, 2) AS rim_um40,
-    coalesce(z.j2_a, 0) AS j2_a, coalesce(z.j2_m, 0) AS j2_m, z.j2_pct, z.j2_unast,
-    round(100.0 * coalesce(z.j2_a, 0) / nullif(z.fg_a, 0), 1) AS j2_rate,
-    round(40.0 * coalesce(z.j2_um, 0) / p.mp, 2) AS j2_um40,
-    coalesce(z.three_a, 0) AS three_a, coalesce(z.three_m, 0) AS three_m, z.three_pct, z.three_unast,
-    round(100.0 * coalesce(z.three_a, 0) / nullif(z.fg_a, 0), 1) AS three_rate,
-    round(40.0 * coalesce(z.three_um, 0) / p.mp, 2) AS three_um40,
+CREATE OR REPLACE TEMP TABLE core AS
+SELECT athlete_id::INT AS pid,
+    arg_max(height, season) AS ht, arg_max(weight, season) AS wt,
+    arg_max(experience_years, season) AS exp,
+    arg_max(TRY_CAST(left(date_of_birth, 10) AS DATE), season) AS dob,
+    arg_max(birth_state, season) AS st, arg_max(position_abbreviation, season) AS pos,
+    arg_max(draft_year, season) AS dy, arg_max(draft_selection, season) AS dp
+FROM read_parquet('raw/player_core_*.parquet', union_by_name = true)
+GROUP BY 1;
 
-    -- distance bands (rate = estimated share of ALL FGA, scaled up from located shots)
-    coalesce(z.close2_a, 0) AS close2_a, z.close2_pct, z.close2_unast,
-    round(100.0 * coalesce(z.close2_a, 0) / nullif(z.j2loc_a, 0) * z.j2_a / nullif(z.fg_a, 0), 1) AS close2_rate,
-    coalesce(z.mid2_a, 0) AS mid2_a, z.mid2_pct, z.mid2_unast,
-    round(100.0 * coalesce(z.mid2_a, 0) / nullif(z.j2loc_a, 0) * z.j2_a / nullif(z.fg_a, 0), 1) AS mid2_rate,
-    coalesce(z.far2_a, 0) AS far2_a, z.far2_pct, z.far2_unast,
-    round(100.0 * coalesce(z.far2_a, 0) / nullif(z.j2loc_a, 0) * z.j2_a / nullif(z.fg_a, 0), 1) AS far2_rate,
-    coalesce(z.c3_a, 0) AS c3_a, z.c3_pct, z.c3_unast,
-    round(100.0 * coalesce(z.c3_a, 0) / nullif(z.threeloc_a, 0), 1) AS c3_shr,
-    coalesce(z.ab3_a, 0) AS ab3_a, z.ab3_pct, z.ab3_unast,
+CREATE OR REPLACE TEMP TABLE bio AS
+WITH ps AS (
+    SELECT pg.season, pg.pid, arg_max(b.athlete_display_name, b.game_date) AS name
+    FROM pg JOIN box b ON b.game_id = pg.gid AND b.athlete_id = pg.pid
+    GROUP BY pg.season, pg.pid
+)
+SELECT ps.season, ps.pid, ps.name,
+    round(c.ht)::INT AS ht, round(c.wt)::INT AS wt,
+    CASE
+        WHEN c.exp IS NOT NULL AND c.exp - (sp.last_season - ps.season) BETWEEN 1 AND 99
+            THEN least(c.exp - (sp.last_season - ps.season), 4)
+        -- no ESPN class: count seasons seen, only when the first one is not cut off by the data window
+        WHEN sp.first_season > 2008 THEN least(ps.season - sp.first_season + 1, 4)
+    END AS cls,
+    CASE WHEN c.dob IS NOT NULL THEN round(date_diff('day', c.dob, make_date(ps.season, 2, 1)) / 365.25, 1) END AS age,
+    c.st, c.pos, c.dy, c.dp
+FROM ps
+JOIN seasons_played sp ON sp.pid = ps.pid
+LEFT JOIN core c ON c.pid = ps.pid;
 
-    -- passing
-    a.ast_rim_shr, a.ast_j2_shr, a.ast_three_shr
-FROM pbox p
-JOIN d1 ON d1.season = p.season AND d1.team_id = p.team_id
-LEFT JOIN ros r ON r.season = p.season AND r.athlete_id = p.athlete_id
-LEFT JOIN zwide z ON z.season = p.season AND z.pid = p.athlete_id AND z.team_id = p.team_id
-LEFT JOIN astz a ON a.season = p.season AND a.pid = p.athlete_id AND a.team_id = p.team_id
-WHERE p.mp > 0;
+-- ---------- write ----------
+COPY (
+    SELECT DISTINCT t.season, t.team_id AS tid, n.team, d1.conf, r.rank
+    FROM tg t
+    JOIN d1 ON d1.season = t.season AND d1.team_id = t.team_id
+    LEFT JOIN tnames n ON n.season = t.season AND n.team_id = t.team_id
+    LEFT JOIN ratings r ON r.season = t.season AND r.team_id = t.team_id
+    ORDER BY t.season, tid
+) TO 'site/data/teams' (FORMAT csv, HEADER, PARTITION_BY (season), OVERWRITE_OR_IGNORE, FILENAME_PATTERN 'part{i}');
 
-COPY players TO 'site/data/players.parquet' (FORMAT parquet, COMPRESSION zstd);
+COPY (SELECT * FROM bio ORDER BY season, pid)
+TO 'site/data/players' (FORMAT csv, HEADER, PARTITION_BY (season), OVERWRITE_OR_IGNORE, FILENAME_PATTERN 'part{i}');
 
-SELECT season, count(*) AS players, round(avg(loc_cov), 1) AS avg_loc_cov FROM players GROUP BY 1 ORDER BY 1;
+COPY (
+    SELECT season, game_id AS gid, team_id AS tid, opp, dt, loc, cg, min,
+        fgm, fga, tpm, tpa, ftm, fta, orb, drb, ast, tov, stl, blk, pf, pts
+    FROM tg ORDER BY season, gid, tid
+) TO 'site/data/tgames' (FORMAT csv, HEADER, PARTITION_BY (season), OVERWRITE_OR_IGNORE, FILENAME_PATTERN 'part{i}');
+
+COPY (SELECT * FROM pg ORDER BY season, gid, tid, pid)
+TO 'site/data/pgames' (FORMAT csv, HEADER, PARTITION_BY (season), OVERWRITE_OR_IGNORE, FILENAME_PATTERN 'part{i}');
+
+-- season list + data-quality notes the site shows
+COPY (
+    WITH bx AS (SELECT season, sum(ast) AS ast, count(DISTINCT gid) AS games,
+                       count(DISTINCT gid) FILTER (pbp = 1) AS pbp_games,
+                       sum(ast) FILTER (pbp = 1) AS pbp_box_ast,
+                       sum(coalesce(rum, 0) + coalesce(jum, 0) + coalesce(t3um, 0)) AS um,
+                       sum(coalesce(rm, 0) + coalesce(jm, 0) + coalesce(t3m, 0)) AS pm,
+                       sum(coalesce(ra, 0) + coalesce(ja, 0) + coalesce(t3a, 0)) AS pfga,
+                       sum(coalesce(lf, 0)) AS lf
+                FROM pg GROUP BY season)
+    SELECT season, games,
+        round(100.0 * pbp_games / games) AS pbp_pct,
+        round(100.0 * (pm - um) / nullif(pbp_box_ast, 0)) AS ast_pct,
+        round(100.0 * lf / nullif(pfga, 0)) AS loc_pct
+    FROM bx ORDER BY season DESC
+) TO 'site/data/seasons.csv' (FORMAT csv, HEADER);
+
+SELECT * FROM 'site/data/seasons.csv';

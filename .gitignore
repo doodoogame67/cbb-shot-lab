@@ -1,7 +1,7 @@
 raw/
+site/data/
 tools/bin/
 tools/*.exe
 tools/*.tgz
-site/data/players.parquet
 .claude/
 .DS_Store

@@ -1,36 +1,45 @@
-# CBB Shot Lab
+# CBB Shot Lab Player Finder
 
-A queryable D1 men's player database built from ESPN play-by-play (via sportsdataverse/hoopR),
-focused on shot zones and self-creation (unassisted rate by zone).
+A T-Rank-style player finder for D1 men's basketball since 2008, with extra filters:
+shot-zone attempts, unassisted rates by zone, 2s by distance, corner 3s, weight, BMI, age, hometown, draft pick.
 
 Live site: https://doodoogame67.github.io/cbb-shot-lab/
 
-## Layout
+## How it works
 
-- `pipeline/build.sql`: all the stat logic (zones, distance bands, unassisted %, usage/TS/rates). DuckDB SQL.
-- `tools/refresh.sh`: downloads the raw files and runs the build (macOS / Linux). Pass seasons to override, e.g. `tools/refresh.sh 2026 2027`.
-- `tools/refresh.ps1` / `tools/serve.ps1`: Windows equivalents of the refresh script and a local web server.
-- `site/index.html` + `site/data/players.csv`: the app. Static, no build step.
-- `.github/workflows/refresh-and-deploy.yml`: rebuilds the data daily Nov–Apr, commits the CSV, deploys to GitHub Pages.
-  Also runs on every push to `main`, and from the Actions tab ("Run workflow").
+- `pipeline/build.sql` turns ESPN box scores + play-by-play (via sportsdataverse) into per-season, game-level CSVs
+  under `site/data/` (one row per player-game and per team-game).
+- `site/index.html` loads one season and aggregates in the browser, so date range, conference-only, venue and
+  "games vs top N" filters recompute every stat. All state lives in the URL, so any view is a shareable link.
+- `.github/workflows/refresh-and-deploy.yml` rebuilds the data and deploys to GitHub Pages daily Nov–Apr,
+  on every push to `main`, and from the Actions tab ("Run workflow"). The data (~225 MB) is never committed.
 
 ## On a Mac
 
 ```
 git clone https://github.com/doodoogame67/cbb-shot-lab.git
 cd cbb-shot-lab
-python3 -m http.server 8000 --directory site    # then open http://localhost:8000
-bash tools/refresh.sh                           # optional: rebuild the data locally (downloads DuckDB into tools/bin)
+bash tools/refresh.sh                              # downloads ~220 MB and builds site/data (about a minute)
+python3 -m http.server 8000 --directory site       # then open http://localhost:8000
 ```
 
-Edit, then `git add -A && git commit -m "..." && git push`; the site redeploys in about 2 minutes.
-Run `git pull` first if the daily data bot has committed since your last pull.
+`bash tools/refresh.sh 2025 2026` builds only those seasons. Edit, then `git add -A && git commit -m "..." && git push`;
+the live site redeploys in a few minutes.
 
-## Definitions and caveats
+Windows equivalents: `tools/refresh.ps1` and `tools/serve.ps1`.
 
-- D1 vs. D1 games only, regular season + postseason (same scope as Barttorvik).
-- rim = layups/dunks/tips; j2 = all other 2s; far2 = located 2s 16ft+; c3 = corner 3.
-- Unassisted % is share of MAKES (PBP only records assists on makes).
-- Shot coordinates exist for ~98% of 2026 shots, ~26% of 2025, ~5% of 2024. Distance bands are only
-  meaningful for 2026 onward; rim / j2 / 3 splits are complete every season.
-- Validated against T-Rank: zone makes/attempts/percentages match exactly on sampled players.
+## Data caveats
+
+| Seasons | Games with play-by-play | Assists in play-by-play | Shot locations |
+|---|---|---|---|
+| 2008 | 53% | 58% | none |
+| 2009–2011 | ~65% | ~81% | none |
+| 2012–2013 | ~63% | ~98% | none |
+| 2014–2024 | 87–99% | ~99% | 7–24% |
+| 2025 | 98% | 99% | 29% |
+| 2026 | 100% | 98% | 100% |
+
+- Box-score stats are complete every season; shot-zone stats only count games with play-by-play.
+- ORtg / D-Rtg are Dean Oliver's formulas; PRPG = (ORtg − 88) × usage × Min% × 68. Not opponent-adjusted, so they differ a bit from T-Rank. No BPM.
+- Height/weight are each player's final ESPN listing; class is worked back from final class; age is as of Feb 1 of the season.
+- TS%, usage and TO% use a 0.475 free-throw weight (matches T-Rank's TS% exactly on sampled players).

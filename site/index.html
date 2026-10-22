@@ -2,510 +2,334 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>CBB Shot Lab</title>
-<meta name="description" content="Query every D1 men's player by shot zone, unassisted rate, distance and tempo-free stats.">
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CBB Shot Lab Player Finder</title>
+<meta name="description" content="D1 men's player stats since 2008 with Torvik-style filters plus shot-zone, unassisted-rate, size and age filters.">
 <style>
-/* Layout: a scorer's-table workbench. Controls stacked in one band on top, one dense sortable table below, glossary at the foot. */
 :root {
-  --bg: #eef1f4;
-  --surface: #ffffff;
-  --surface-2: #f6f8fa;
-  --ink: #15202b;
-  --muted: #5b6a78;
-  --line: #d6dde4;
-  --accent: #c8581a;      /* basketball leather */
-  --accent-ink: #ffffff;
-  --navy: #1f3d63;
-  --hi: #e8862a;          /* high percentile */
-  --lo: #3f7cc0;          /* low percentile */
-  --warn-bg: #fff4e5;
-  --warn-ink: #7a4510;
-  --err: #b42318;
-  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
-  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0e1319; --surface: #151c24; --surface-2: #1a232d; --ink: #e5eaef; --muted: #93a2b1;
-    --line: #2a3643; --accent: #ef7a35; --accent-ink: #1a0d04; --navy: #9cc0ea;
-    --hi: #f0913a; --lo: #5b9be0; --warn-bg: #2d2113; --warn-ink: #f3c58f; --err: #ff8a7a;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0e1319; --surface: #151c24; --surface-2: #1a232d; --ink: #e5eaef; --muted: #93a2b1;
-  --line: #2a3643; --accent: #ef7a35; --accent-ink: #1a0d04; --navy: #9cc0ea;
-  --hi: #f0913a; --lo: #5b9be0; --warn-bg: #2d2113; --warn-ink: #f3c58f; --err: #ff8a7a;
-  color-scheme: dark;
+  --ink: #000;
+  --muted: #666;
+  --link: #00008b;
+  --line: #c9d3df;
+  --head: #4f81bd;
+  --head-ink: #fff;
+  --panel-head: #4f81bd;
+  --stripe: #f4f7fb;
+  --good: 99, 190, 123;   /* rgb for high-percentile shading */
+  --bad: 248, 105, 107;   /* rgb for low-percentile shading */
 }
 * { box-sizing: border-box; }
-:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-[hidden] { display: none !important; }
-img { max-width: 100%; }
-body {
-  margin: 0;
-  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45;
+body { margin: 0; background: #fff; color: var(--ink); font: 12px/1.35 Arial, Helvetica, sans-serif; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.top { text-align: center; padding: 14px 12px 6px; display: grid; gap: 8px; justify-items: center; }
+.nav { display: flex; gap: 22px; font-size: 15px; }
+h1 { font-size: 17px; margin: 6px 0 0; }
+.qual { display: grid; gap: 5px; justify-items: center; }
+.qual input[type=text] { width: 76px; }
+.qual input.n { width: 44px; }
+.note { color: var(--muted); max-width: 760px; }
+button.go { background: #5b9bd5; color: #fff; border: 0; border-radius: 3px; padding: 3px 12px; font: bold 12px Arial, sans-serif; cursor: pointer; }
+input, select { font: 12px Arial, Helvetica, sans-serif; }
+input[type=text], input[type=number] { padding: 1px 3px; border: 1px solid #999; }
+.main { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px 30px; }
+.filters { flex: 0 0 auto; }
+.filters table { border-collapse: collapse; }
+.filters th { background: var(--panel-head); color: #fff; font-weight: bold; font-size: 11px; padding: 3px 6px; }
+.filters td { padding: 1px 4px; border-bottom: 1px solid #eef1f5; white-space: nowrap; }
+.filters td.lab { text-align: center; }
+.filters td.lab span.tg { cursor: pointer; display: inline-block; width: 16px; user-select: none; }
+.filters td.lab.off { color: var(--muted); }
+.filters input.v { width: 58px; }
+.filters input.name { width: 120px; }
+.filters select.wide { width: 128px; }
+.filters tr.sep td { background: #e8eef6; font-weight: bold; text-align: center; padding: 3px; }
+.filters .custom { width: 100%; font-family: Consolas, "Courier New", monospace; }
+.filters .err { color: #b00; white-space: normal; max-width: 260px; }
+.results { flex: 1 1 auto; min-width: 0; overflow-x: auto; }
+table.res { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.res th { background: var(--head); color: var(--head-ink); font-size: 11px; padding: 3px 4px; cursor: pointer; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+table.res th.sorted { text-decoration: underline; }
+table.res td { padding: 2px 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #edf0f4; }
+table.res td.l { text-align: left; }
+table.res tr:nth-child(even) td { background-color: var(--stripe); }
+table.res td.sh small { display: block; color: #555; font-size: 9.5px; line-height: 1.1; }
+table.res td b { font-weight: bold; }
+.muted { color: var(--muted); }
+.more { padding: 8px; }
+.faq { max-width: 900px; margin: 0 auto 40px; padding: 0 12px; }
+.faq h2 { font-size: 15px; }
+.faq table { border-collapse: collapse; }
+.faq td, .faq th { border: 1px solid var(--line); padding: 2px 6px; text-align: center; }
+.faq dt { font-weight: bold; margin-top: 6px; }
+.faq dd { margin: 0 0 0 14px; }
+code { font-family: Consolas, "Courier New", monospace; }
+@media (max-width: 760px) {
+  .main { flex-direction: column; }
+  .filters { width: 100%; overflow-x: auto; }
+  .results { width: 100%; }
 }
-.wrap {
-  max-width: 1500px; margin: 0 auto;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 20px 48px;
-  display: grid; gap: 14px;
-}
-header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 24px; }
-.brand h1 {
-  font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1; margin: 0;
-  letter-spacing: 0.01em; text-wrap: balance;
-}
-.brand h1 span { color: var(--accent); }
-.brand p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
-.eyebrow { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 13px; color: var(--muted); font-weight: 600; }
-
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 12px; min-width: 0; }
-.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-.field { display: flex; align-items: center; gap: 6px; }
-.label { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 12.5px; color: var(--muted); }
-
-button, select, input, textarea { font: inherit; color: inherit; }
-select, input[type=number], input[type=text], input[type=search] {
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; min-width: 0;
-}
-input[type=number] { width: 76px; }
-button { cursor: pointer; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.seg button { border: 0; background: var(--surface-2); padding: 5px 11px; font-variant-numeric: tabular-nums; }
-.seg button + button { border-left: 1px solid var(--line); }
-.seg button[aria-pressed="true"] { background: var(--navy); color: var(--surface); font-weight: 600; }
-
-.chip { border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
-.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 5px 11px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.btn.ghost { background: transparent; }
-.x { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
-.x:hover { color: var(--err); }
-
-details.drop { position: relative; }
-details.drop > summary { list-style: none; }
-details.drop > summary::-webkit-details-marker { display: none; }
-details.drop .menu {
-  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; background: var(--surface); border: 1px solid var(--line);
-  border-radius: 8px; padding: 10px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); width: min(420px, calc(100vw - 32px));
-  display: grid; gap: 8px;
-}
-.confgrid { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.builder { display: grid; gap: 6px; }
-.frow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.frow select.col { max-width: 260px; }
-.frow input { width: 90px; }
-
-.exprbox { display: grid; gap: 6px; }
-.exprbox textarea {
-  width: 100%; min-height: 44px; resize: vertical; font-family: var(--font-mono); font-size: 13.5px;
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
-}
-.exprbox textarea.bad { border-color: var(--err); }
-.msg { font-size: 13px; color: var(--muted); min-height: 1.2em; }
-.msg.err { color: var(--err); }
-code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
-code, .mono, .exprbox textarea { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
-
-.views { display: flex; flex-wrap: wrap; gap: 0 2px; border-bottom: 1px solid var(--line); }
-.views button {
-  border: 0; background: transparent; padding: 7px 12px; font-family: var(--font-display); font-weight: 600;
-  font-size: 15px; letter-spacing: 0.03em; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px;
-}
-.views button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
-
-.status { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
-.count { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
-.count b { color: var(--accent); }
-.note { background: var(--warn-bg); color: var(--warn-ink); border-radius: 6px; padding: 7px 10px; font-size: 13px; }
-
-.tablewrap { overflow: auto; max-height: 78vh; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
-table { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; font-size: 13px; width: max-content; min-width: 100%; }
-th, td { padding: 4px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
-th {
-  position: sticky; top: 0; z-index: 2; background: var(--surface-2); font-family: var(--font-display); font-weight: 600;
-  font-size: 13.5px; letter-spacing: 0.02em; cursor: pointer; user-select: none; vertical-align: bottom;
-}
-th .grp { display: block; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
-th.sorted { color: var(--accent); }
-th.sorted::after { content: attr(data-arrow); margin-left: 3px; }
-td.s, th.s { text-align: left; }
-td.name, th.name { position: sticky; left: 0; z-index: 1; background: var(--surface); border-right: 1px solid var(--line); }
-th.name { z-index: 3; background: var(--surface-2); }
-td.name a { color: inherit; text-decoration: none; font-weight: 600; }
-td.name a:hover { color: var(--accent); text-decoration: underline; }
-td.rk { color: var(--muted); text-align: right; }
-tbody tr:hover td { box-shadow: inset 0 0 0 9999px rgb(127 127 127 / 0.08); }
-.more { display: flex; justify-content: center; padding: 8px; }
-
-.gloss { display: grid; gap: 10px; }
-.gloss h2 { font-family: var(--font-display); font-size: 22px; margin: 0; }
-.gloss .cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 24px; }
-.gloss dl { margin: 0; }
-.gloss dt { font-family: var(--font-mono); font-size: 12.5px; margin-top: 6px; }
-.gloss dd { margin: 0; color: var(--muted); font-size: 13px; }
-.gloss p { margin: 0; max-width: 85ch; }
-.gloss ul { margin: 0; padding-left: 18px; max-width: 85ch; display: grid; gap: 4px; }
-.colpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 10px; max-height: 50vh; overflow: auto; }
-.colpick h4 { grid-column: 1 / -1; margin: 6px 0 0; font-family: var(--font-display); font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-.colpick label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
-.loading { padding: 40px; text-align: center; color: var(--muted); }
-@media (max-width: 640px) {
-  .brand h1 { font-size: 28px; }
-  .frow select.col { max-width: 100%; }
-}
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
+<div class="top">
+  <div class="nav"><a href="./">Players</a><a href="#faq">FAQ</a></div>
+  <select id="year" aria-label="Season"></select>
+  <a href="#" id="confOnly"></a>
+  <h1 id="title">Player Finder</h1>
+  <label><input type="checkbox" id="hideFilters"> Hide filters</label>
+  <div class="qual">
+    <div id="qualText">No quality filter.</div>
+    <div>Filter to games against top <input type="text" class="n" id="topN" inputmode="numeric"> teams
+      &nbsp;·&nbsp; Venue <select id="venue"><option value="">All</option><option value="1">Home</option><option value="-1">Away</option><option value="0">Neutral</option></select></div>
+    <div>From: <input type="text" id="from" inputmode="numeric" placeholder="YYYYMMDD"> To: <input type="text" id="to" inputmode="numeric" placeholder="YYYYMMDD"></div>
+    <button class="go" id="go" type="button">Filter</button>
+  </div>
+  <div class="note" id="coverage"></div>
+</div>
 
-<div class="wrap">
-  <header class="top">
-    <div class="brand">
-      <div class="eyebrow" id="eyebrow">D1 men · ESPN play-by-play</div>
-      <h1>CBB <span>Shot</span> Lab</h1>
-      <p>Filter every D1 player by how and where they score: unassisted rate by zone, rim vs. non-rim 2s vs. long 2s vs. 3s, corner 3s, and the usual tempo-free stats.</p>
-    </div>
-  </header>
+<div class="main">
+  <div class="filters" id="filterBox">
+    <table>
+      <thead><tr><th>STAT</th><th>VALUE</th></tr></thead>
+      <tbody id="fbody"></tbody>
+    </table>
+  </div>
+  <div class="results">
+    <div id="status" class="muted" style="padding:2px 0 4px">Loading…</div>
+    <div id="tbl"></div>
+    <div class="more" id="more" hidden><a href="#" id="showAll"></a></div>
+  </div>
+</div>
 
-  <section class="panel" aria-label="Filters">
-    <div class="row">
-      <div class="field"><span class="label">Season</span>
-        <div class="seg" id="seasonSeg"></div>
-      </div>
-      <div class="field"><label class="label" for="minPct">Min % mins</label>
-        <input type="number" id="minPct" min="0" max="100" step="5">
-      </div>
-      <div class="field"><span class="label">Class</span>
-        <div class="row" id="clsChips" style="gap:4px"></div>
-      </div>
-      <details class="drop" id="confDrop">
-        <summary class="btn" id="confSummary">Conferences: all</summary>
-        <div class="menu">
-          <div class="row" style="gap:6px">
-            <button class="btn" id="confHigh" type="button">High-majors</button>
-            <button class="btn ghost" id="confClear" type="button">Clear</button>
-          </div>
-          <div class="confgrid" id="confGrid"></div>
-        </div>
-      </details>
-      <div class="field" style="flex:1 1 180px"><label class="label" for="search">Player / team</label>
-        <input type="search" id="search" placeholder="e.g. Purdue" style="flex:1">
-      </div>
-    </div>
-
-    <div class="builder">
-      <div class="row" style="justify-content:space-between">
-        <span class="label">Filters</span>
-        <div class="row" style="gap:6px">
-          <select id="preset" aria-label="Load a preset query"><option value="">Try a preset query…</option></select>
-          <button class="btn" id="addFilter" type="button">+ Add filter</button>
-        </div>
-      </div>
-      <div id="frows" class="builder"></div>
-    </div>
-
-    <div class="exprbox">
-      <label class="label" for="expr">Query (any column, combined with the filters above)</label>
-      <textarea id="expr" spellcheck="false" placeholder="rim_unast >= 60 and tpr >= 35 and conf in ('B10','SEC')"></textarea>
-      <div class="msg" id="exprMsg"></div>
-    </div>
-
-    <details>
-      <summary class="label" style="cursor:pointer">Formula columns</summary>
-      <div class="exprbox" style="margin-top:8px">
-        <div class="row" style="gap:6px">
-          <input type="text" id="fName" placeholder="name, e.g. self_mk40" style="width:170px" class="mono">
-          <span>=</span>
-          <input type="text" id="fExpr" placeholder="rim_um40 + j2_um40 + three_um40" style="flex:1 1 260px" class="mono">
-          <button class="btn primary" id="fAdd" type="button">Add column</button>
-        </div>
-        <div class="msg" id="fMsg">Formula columns can be sorted, filtered and used in the query box like any other column.</div>
-        <div class="row" id="fList" style="gap:6px"></div>
-      </div>
-    </details>
-  </section>
-
-  <section style="display:grid; gap:10px; min-width:0">
-    <div class="views" id="views" role="toolbar" aria-label="Column sets"></div>
-    <details class="drop" id="colDrop" hidden>
-      <summary class="btn">Choose columns</summary>
-      <div class="menu" style="width:min(720px, calc(100vw - 32px))"><div class="colpick" id="colPick"></div></div>
-    </details>
-    <div class="status">
-      <div class="count" id="count">Loading…</div>
-      <div class="row" style="gap:6px">
-        <button class="btn" id="copyQ" type="button">Copy query</button>
-        <button class="btn" id="copyCsv" type="button">Copy results as CSV</button>
-        <button class="btn ghost" id="reset" type="button">Reset</button>
-      </div>
-    </div>
-    <div class="note" id="locNote" hidden></div>
-    <div class="tablewrap" id="tablewrap"><div class="loading">Loading 15,000 player-seasons…</div></div>
-    <div class="more" id="more" hidden><button class="btn" id="moreBtn" type="button">Show 100 more</button></div>
-  </section>
-
-  <section class="panel gloss" aria-label="Glossary">
-    <h2>How the numbers work</h2>
-    <ul>
-      <li><b>Scope:</b> D1 vs. D1 games only, regular season plus postseason. Percentile shading compares each player to players in the same season with at least 40% of team minutes.</li>
-      <li><b>Zones:</b> <i>rim</i> = layups, dunks, tip-ins. <i>j2</i> = every other 2 (jumpers, floaters, hooks), the "non-rim 2s". Located j2s are split into <i>close2</i> (under 8 ft), <i>mid2</i> (8–16 ft) and <i>far2</i> (16 ft to the arc). <i>c3</i> = corner 3s, <i>ab3</i> = above-the-break 3s.</li>
-      <li><b>Unassisted:</b> play-by-play only records assists on made shots, so <code>*_unast</code> is the share of a player's <i>makes</i> in that zone with no assist. <code>*_um40</code> is unassisted makes per 40 minutes, which rewards volume.</li>
-      <li><b>Shot locations:</b> ESPN logged coordinates for about 98% of 2026 shots, but only about 26% in 2025 and 5% in 2024. Distance-band columns (<code>close2</code>, <code>mid2</code>, <code>far2</code>, <code>c3</code>, <code>ab3</code>) only cover located shots; <code>loc_cov</code> shows each player's coverage. Rim / j2 / 3 splits come from shot type and are complete every season.</li>
-      <li><b>Checked against Barttorvik:</b> rim, other-2 and 3PT makes, attempts and percentages match T-Rank exactly for sampled players. Assisted counts can differ by a make or so. Usage and assist rate use Basketball-Reference formulas, so they run a little different from T-Rank's.</li>
-      <li><b>Query syntax:</b> <code>and</code>, <code>or</code>, <code>not</code>, parentheses, <code>+ - * /</code>, comparisons <code>&gt; &gt;= &lt; &lt;= = !=</code>, <code>between 30 and 40</code>, <code>in ('B10','SEC')</code>, and functions <code>abs min max round coalesce</code>. Text compares ignore case. <code>ht</code> is in inches (6'9" = 81).</li>
-    </ul>
-    <div class="cols" id="glossCols"></div>
-  </section>
+<div class="faq" id="faq">
+  <h2>FAQ</h2>
+  <dl>
+    <dt>What's in here?</dt>
+    <dd>Every D1 men's player since 2008, D1-vs-D1 games only, regular season plus postseason, from ESPN box scores and play-by-play (via the sportsdataverse project). Everything is computed in your browser from game-level data, so the date range, conference-only, venue and top-N filters recompute every stat.</dd>
+    <dt>Close 2 / Far 2</dt>
+    <dd>Same split as T-Rank: Close 2 = layups, dunks and tip-ins; Far 2 = every other 2 (jumpers, floaters, hooks). These come from play-by-play, so they only count games with play-by-play (see the coverage table).</dd>
+    <dt>Unassisted</dt>
+    <dd>Play-by-play only records assists on makes, so "Unast%" is the share of made shots with no assist. Before 2012 ESPN's play-by-play misses a lot of assists (see the table), which pushes those seasons' unassisted rates up.</dd>
+    <dt>2s by distance and corner 3s</dt>
+    <dd>Need shot coordinates. ESPN has them for every 2026 shot, about 29% of 2025 shots, 7–24% of 2014–2024 shots, and none before 2014. The "Loc%" column shows each player's coverage. The "rate" columns for distance bands are scaled up from located shots to estimate a share of all FGA.</dd>
+    <dt>ORtg, D-Rtg, PRPG</dt>
+    <dd>ORtg and D-Rtg use Dean Oliver's individual rating formulas (the Basketball-Reference versions). PRPG here is (ORtg − 88) × usage × Min% × 68 possessions, i.e. points over a replacement player per 68-possession game. T-Rank adjusts its ratings for opponent strength and this site does not, so these won't match T-Rank exactly. BPM is not included.</dd>
+    <dt>Role</dt>
+    <dd>Estimated from height, assist rate, usage, 3-point rate, rebounding and blocks: Pure PG, Scoring PG, Combo G, Wing G, Wing F, Stretch 4, PF/C, C.</dd>
+    <dt>Height, weight, age, class, hometown</dt>
+    <dd>ESPN keeps only each player's latest listing, so height and weight are his final listed numbers. Class is worked back from his final class, and age is his age on Feb. 1 of that season (birthdates are missing for many players). BMI = 703 × weight ÷ height².</dd>
+    <dt>Top-N teams</dt>
+    <dd>Uses the sportsdataverse adjusted-efficiency ranking for that season. It is not venue-adjusted.</dd>
+    <dt>Custom filter</dt>
+    <dd>The box under the stat filters takes any expression over the column keys (hover a header to see its key), e.g. <code>r_un &gt;= 60 and tpr between 30 and 50 and conf in ('B10','SEC')</code>. It supports <code>and or not</code>, <code>+ - * /</code>, <code>between</code>, <code>in (…)</code>, and <code>abs min max round</code>.</dd>
+  </dl>
+  <h2>Data coverage by season</h2>
+  <div id="covTable"></div>
 </div>
 
 <script>
 "use strict";
-// ---------- column catalogue ----------
-// fmt: s text, i integer, 1/2 decimals, ht height. dir: 1 higher is better, -1 lower is better, 0 no shading.
+// ---------- stat catalogue ----------
+// Each filter row is one stat. `col` names the table column it belongs to (shooting columns show pct over made-att).
+// fmt: 1 one decimal, 2 two decimals, 0 integer. dir: 1 = higher is better (green), -1 = lower is better, 0 = no shading.
+const ROWS = [
+  // key, filter label, col, fmt, dir, shown by default
+  ["min_pct", "Min%", "min_pct", 1, 0, 1],
+  ["totmin", "TotMin", "totmin", 0, 0, 0],
+  ["g", "Games", "g", 0, 0, 1],
+  ["prpg", "PRPG", "prpg", 1, 1, 1],
+  ["ortg", "O-Rating", "ortg", 1, 1, 1],
+  ["drtg", "D-Rating", "drtg", 1, -1, 1],
+  ["usg", "Usage", "usg", 1, 0, 1],
+  ["efg", "eFG%", "efg", 1, 1, 1],
+  ["ts", "TS%", "ts", 1, 1, 1],
+  ["orp", "O-Reb%", "orp", 1, 1, 1],
+  ["drp", "D-Reb%", "drp", 1, 1, 1],
+  ["astp", "Ast%", "astp", 1, 1, 1],
+  ["top", "TO %", "top", 1, -1, 1],
+  ["ato", "A/TO", "ato", 2, 1, 0],
+  ["blkp", "Blk %", "blkp", 1, 1, 1],
+  ["stlp", "Stl %", "stlp", 1, 1, 1],
+  ["ftr", "FTR", "ftr", 1, 1, 1],
+  ["fc40", "FC/40", "fc40", 1, -1, 0],
+  ["dm", "Dunks", "dunk", 0, 1, 0],
+  ["da", "Dunk Atts", "dunk", 0, 1, 0],
+  ["dpct", "Dunk%", "dunk", 1, 1, 0],
+  ["rm", "Close 2 Made", "close2", 0, 1, 0],
+  ["ra", "Close 2 Atts", "close2", 0, 0, 0],
+  ["rpct", "Close 2 %", "close2", 1, 1, 0],
+  ["jm", "Far 2 Made", "far2", 0, 1, 0],
+  ["ja", "Far 2 Atts", "far2", 0, 0, 0],
+  ["jpct", "Far 2 %", "far2", 1, 1, 0],
+  ["ftm", "FTM", "ft", 0, 1, 0],
+  ["fta", "FTA", "ft", 0, 0, 0],
+  ["ftpct", "FT%", "ft", 1, 1, 0],
+  ["fg2m", "2PM", "two", 0, 1, 1],
+  ["fg2a", "2PA", "two", 0, 0, 1],
+  ["fg2pct", "2P%", "two", 1, 1, 1],
+  ["tpr", "3PR", "tpr", 1, 0, 1],
+  ["tp100", "3PA/100", "tp100", 1, 0, 1],
+  ["tpm", "3PM", "three", 0, 1, 1],
+  ["tpa", "3PA", "three", 0, 0, 1],
+  ["tppct", "3P%", "three", 1, 1, 1],
+  null, // ---- beyond T-Rank ----
+  ["ppg", "PPG", "ppg", 1, 1, 0],
+  ["rpg", "RPG", "rpg", 1, 1, 0],
+  ["apg", "APG", "apg", 1, 1, 0],
+  ["mpg", "MPG", "mpg", 1, 0, 0],
+  ["wt", "Weight", "wt", 0, 0, 0],
+  ["bmi", "BMI", "bmi", 1, 0, 0],
+  ["age", "Age", "age", 1, -1, 0],
+  ["unast", "Unast% (all)", "unast", 1, 1, 1],
+  ["r_un", "Close 2 Unast%", "r_un", 1, 1, 1],
+  ["j_un", "Far 2 Unast%", "j_un", 1, 1, 0],
+  ["t_un", "3P Unast%", "t_un", 1, 1, 1],
+  ["r_rate", "Close 2 % of FGA", "r_rate", 1, 0, 0],
+  ["j_rate", "Far 2 % of FGA", "j_rate", 1, 0, 0],
+  ["r_um40", "Unast Close 2 /40", "r_um40", 2, 1, 0],
+  ["j_um40", "Unast Far 2 /40", "j_um40", 2, 1, 0],
+  ["t_um40", "Unast 3PM /40", "t_um40", 2, 1, 0],
+  ["sm", "2s <8ft Made", "lt8", 0, 1, 0],
+  ["sa", "2s <8ft Atts", "lt8", 0, 0, 0],
+  ["spct", "2s <8ft %", "lt8", 1, 1, 0],
+  ["mm", "2s 8-16ft Made", "mid2", 0, 1, 0],
+  ["ma", "2s 8-16ft Atts", "mid2", 0, 0, 0],
+  ["mpct", "2s 8-16ft %", "mid2", 1, 1, 0],
+  ["m_un", "2s 8-16ft Unast%", "m_un", 1, 1, 0],
+  ["lm", "Long 2 (16ft+) Made", "long2", 0, 1, 0],
+  ["la", "Long 2 Atts", "long2", 0, 0, 0],
+  ["lpct", "Long 2 %", "long2", 1, 1, 0],
+  ["l_un", "Long 2 Unast%", "l_un", 1, 1, 0],
+  ["l_rate", "Long 2 % of FGA", "l_rate", 1, 0, 0],
+  ["cm", "Corner 3 Made", "c3", 0, 1, 0],
+  ["ca", "Corner 3 Atts", "c3", 0, 0, 0],
+  ["cpct", "Corner 3 %", "c3", 1, 1, 0],
+  ["c_shr", "Corner % of 3PA", "c_shr", 1, 0, 0],
+  ["bm", "Above-break 3 Made", "ab3", 0, 1, 0],
+  ["ba", "Above-break 3 Atts", "ab3", 0, 0, 0],
+  ["bpct", "Above-break 3 %", "ab3", 1, 1, 0],
+  ["a_rim", "Ast → Close 2 %", "a_rim", 1, 0, 0],
+  ["a_3", "Ast → 3 %", "a_3", 1, 0, 0],
+  ["pts40", "Pts/40", "pts40", 1, 1, 0],
+  ["reb40", "Reb/40", "reb40", 1, 1, 0],
+  ["ast40", "Ast/40", "ast40", 1, 1, 0],
+  ["stl40", "Stl/40", "stl40", 1, 1, 0],
+  ["blk40", "Blk/40", "blk40", 1, 1, 0],
+  ["loc", "Loc% (located FGA)", "loc", 1, 0, 0],
+  ["pbpg", "PBP games %", "pbpg", 1, 0, 0],
+].map(r => r && ({ key: r[0], label: r[1], col: r[2], fmt: r[3], dir: r[4], def: !!r[5] }));
+const STAT = Object.fromEntries(ROWS.filter(Boolean).map(r => [r.key, r]));
+
+// Table columns after the fixed ones, in order. Shooting columns: [made key, att key, pct key].
 const COLS = [
-  ["name", "Player", "Info", "s", 0, "Player name (links to ESPN)"],
-  ["team", "Team", "Info", "s", 0, "Team"],
-  ["conf", "Conf", "Info", "s", 0, "Conference"],
-  ["season", "Yr", "Info", "i", 0, "Season (2026 = 2025-26)"],
-  ["cls", "Cls", "Info", "s", 0, "Class from ESPN roster (2025+ only)"],
-  ["pos", "Pos", "Info", "s", 0, "Position from ESPN roster (2025+ only)"],
-  ["ht", "Ht", "Info", "ht", 0, "Height in inches (displayed as ft-in)"],
-  ["g", "G", "Info", "i", 0, "Games played (D1 opponents)"],
-  ["gs", "GS", "Info", "i", 0, "Games started"],
-  ["mpg", "MPG", "Info", "1", 0, "Minutes per game"],
-  ["min_pct", "Min%", "Info", "1", 0, "Share of team minutes in games played"],
+  ["min_pct", "Min%"], ["totmin", "Min"], ["g", "G"], ["prpg", "PRPG"], ["ortg", "ORtg"], ["drtg", "D-Rtg"], ["usg", "Usg"],
+  ["efg", "eFG"], ["ts", "TS"], ["orp", "OR"], ["drp", "DR"], ["astp", "Ast"], ["top", "TO"], ["ato", "A/TO"],
+  ["blkp", "Blk"], ["stlp", "Stl"], ["ftr", "FTR"], ["fc40", "FC/40"],
+  ["dunk", "Dunks", ["dm", "da", "dpct"]], ["close2", "Close 2", ["rm", "ra", "rpct"]], ["far2", "Far 2", ["jm", "ja", "jpct"]],
+  ["ft", "FT", ["ftm", "fta", "ftpct"]], ["two", "2P", ["fg2m", "fg2a", "fg2pct"]], ["tpr", "3PR"], ["tp100", "3P/100"],
+  ["three", "3P", ["tpm", "tpa", "tppct"]],
+  ["ppg", "PPG"], ["rpg", "RPG"], ["apg", "APG"], ["mpg", "MPG"], ["wt", "Wt"], ["bmi", "BMI"], ["age", "Age"],
+  ["unast", "Unast%"], ["r_un", "C2 Unast"], ["j_un", "F2 Unast"], ["t_un", "3P Unast"],
+  ["r_rate", "C2 Rate"], ["j_rate", "F2 Rate"], ["r_um40", "UC2/40"], ["j_um40", "UF2/40"], ["t_um40", "U3/40"],
+  ["lt8", "2 <8ft", ["sm", "sa", "spct"]], ["mid2", "2 8-16ft", ["mm", "ma", "mpct"]], ["m_un", "8-16 Unast"],
+  ["long2", "Long 2", ["lm", "la", "lpct"]], ["l_un", "L2 Unast"], ["l_rate", "L2 Rate"],
+  ["c3", "Corner 3", ["cm", "ca", "cpct"]], ["c_shr", "Corner Shr"], ["ab3", "AB 3", ["bm", "ba", "bpct"]],
+  ["a_rim", "Ast→C2"], ["a_3", "Ast→3"], ["pts40", "Pts/40"], ["reb40", "Reb/40"], ["ast40", "Ast/40"],
+  ["stl40", "Stl/40"], ["blk40", "Blk/40"], ["loc", "Loc%"], ["pbpg", "PBP%"],
+].map(([id, head, parts]) => ({ id, head, parts }));
+const COLMAP = Object.fromEntries(COLS.map(c => [c.id, c]));
 
-  ["ppg", "PPG", "Box", "1", 1, "Points per game"],
-  ["rpg", "RPG", "Box", "1", 1, "Rebounds per game"],
-  ["apg", "APG", "Box", "1", 1, "Assists per game"],
-  ["usg", "Usg", "Box", "1", 0, "Usage rate: share of team plays used on the floor"],
-  ["ts", "TS%", "Box", "1", 1, "True shooting %"],
-  ["efg", "eFG%", "Box", "1", 1, "Effective FG %"],
-  ["ast_pct", "Ast%", "Box", "1", 1, "Assist rate: % of teammate FGs assisted while on floor"],
-  ["to_pct", "TO%", "Box", "1", -1, "Turnovers per 100 plays used"],
-  ["ast_to", "A/TO", "Box", "2", 1, "Assist to turnover ratio"],
-  ["or_pct", "OR%", "Box", "1", 1, "Offensive rebound %"],
-  ["dr_pct", "DR%", "Box", "1", 1, "Defensive rebound %"],
-  ["stl_pct", "Stl%", "Box", "1", 1, "Steals per 100 opponent possessions"],
-  ["blk_pct", "Blk%", "Box", "1", 1, "Share of opponent 2PA blocked"],
-  ["ftr", "FTR", "Box", "1", 1, "Free throw rate: FTA per 100 FGA"],
-  ["tpr", "3PR", "Box", "1", 0, "3-point rate: 3PA per 100 FGA"],
-  ["ft_pct", "FT%", "Box", "1", 1, "Free throw %"],
-  ["fg2_pct", "2P%", "Box", "1", 1, "2-point FG %"],
-  ["fg3_pct", "3P%", "Box", "1", 1, "3-point FG %"],
-  ["pts40", "Pts/40", "Box", "1", 1, "Points per 40 minutes"],
-  ["reb40", "Reb/40", "Box", "1", 1, "Rebounds per 40"],
-  ["ast40", "Ast/40", "Box", "1", 1, "Assists per 40"],
-  ["stl40", "Stl/40", "Box", "1", 1, "Steals per 40"],
-  ["blk40", "Blk/40", "Box", "1", 1, "Blocks per 40"],
-  ["pf40", "PF/40", "Box", "1", -1, "Fouls per 40"],
-  ["fta40", "FTA/40", "Box", "1", 1, "Free throw attempts per 40"],
-  ["fga", "FGA", "Totals", "i", 0, "Field goal attempts (box score)"],
-  ["tpa", "3PA", "Totals", "i", 0, "3-point attempts (box score)"],
-  ["fta", "FTA", "Totals", "i", 0, "Free throw attempts"],
-  ["pts", "Pts", "Totals", "i", 0, "Points"],
-  ["ast", "Ast", "Totals", "i", 0, "Assists"],
-  ["tov", "TO", "Totals", "i", 0, "Turnovers"],
-  ["stl", "Stl", "Totals", "i", 0, "Steals"],
-  ["blk", "Blk", "Totals", "i", 0, "Blocks"],
-  ["orb", "ORB", "Totals", "i", 0, "Offensive rebounds"],
-  ["drb", "DRB", "Totals", "i", 0, "Defensive rebounds"],
+const HIGH_MAJ = new Set(["ACC", "B10", "B12", "BE", "SEC", "P12", "P10"]);
+const CLASSES = { All: null, Sr: [4], "< Sr": [1, 2, 3], Jr: [3], So: [2], Fr: [1], "Fr-So": [1, 2] };
+const AGES = { All: null, U19: [0, 19], U20: [0, 20], U21: [0, 21], U22: [0, 22], "22+": [22, 99] };
+const ROLES = ["Pure PG", "Scoring PG", "Combo G", "Wing G", "Wing F", "Stretch 4", "PF/C", "C"];
+const CLS_NAME = { 1: "Fr", 2: "So", 3: "Jr", 4: "Sr" };
 
-  ["pbp_fga", "FGA", "Shots", "i", 0, "Field goal attempts found in play-by-play"],
-  ["unast", "Unast%", "Shots", "1", 1, "% of all made FGs that were unassisted"],
-  ["loc_cov", "Loc%", "Shots", "1", 0, "% of this player's FGA with a shot location"],
-  ["rim_a", "Rim A", "Rim", "i", 0, "Rim attempts (layups, dunks, tips)"],
-  ["rim_m", "Rim M", "Rim", "i", 0, "Rim makes"],
-  ["rim_pct", "Rim%", "Rim", "1", 1, "Rim FG %"],
-  ["rim_rate", "Rim rt", "Rim", "1", 0, "Rim attempts per 100 FGA"],
-  ["rim_unast", "Rim Unast", "Rim", "1", 1, "% of rim makes unassisted"],
-  ["rim_um40", "Rim UM/40", "Rim", "2", 1, "Unassisted rim makes per 40"],
-  ["j2_a", "J2 A", "Non-rim 2", "i", 0, "Non-rim 2 attempts (jumpers, floaters, hooks)"],
-  ["j2_m", "J2 M", "Non-rim 2", "i", 0, "Non-rim 2 makes"],
-  ["j2_pct", "J2%", "Non-rim 2", "1", 1, "Non-rim 2 FG %"],
-  ["j2_rate", "J2 rt", "Non-rim 2", "1", 0, "Non-rim 2 attempts per 100 FGA"],
-  ["j2_unast", "J2 Unast", "Non-rim 2", "1", 1, "% of non-rim 2 makes unassisted"],
-  ["j2_um40", "J2 UM/40", "Non-rim 2", "2", 1, "Unassisted non-rim 2 makes per 40"],
-  ["three_a", "3 A", "Three", "i", 0, "3-point attempts (play-by-play)"],
-  ["three_m", "3 M", "Three", "i", 0, "3-point makes"],
-  ["three_pct", "3%", "Three", "1", 1, "3-point FG %"],
-  ["three_rate", "3 rt", "Three", "1", 0, "3PA per 100 FGA (play-by-play)"],
-  ["three_unast", "3 Unast", "Three", "1", 1, "% of made 3s unassisted"],
-  ["three_um40", "3 UM/40", "Three", "2", 1, "Unassisted made 3s per 40"],
-
-  ["close2_a", "Cls2 A", "Close 2 (<8ft)", "i", 0, "Located non-rim 2s under 8 ft"],
-  ["close2_pct", "Cls2%", "Close 2 (<8ft)", "1", 1, "Close 2 FG %"],
-  ["close2_rate", "Cls2 rt", "Close 2 (<8ft)", "1", 0, "Est. close 2s per 100 FGA"],
-  ["close2_unast", "Cls2 Unast", "Close 2 (<8ft)", "1", 1, "% of close 2 makes unassisted"],
-  ["mid2_a", "Mid2 A", "Mid 2 (8-16ft)", "i", 0, "Located non-rim 2s, 8-16 ft"],
-  ["mid2_pct", "Mid2%", "Mid 2 (8-16ft)", "1", 1, "Mid 2 FG %"],
-  ["mid2_rate", "Mid2 rt", "Mid 2 (8-16ft)", "1", 0, "Est. mid 2s per 100 FGA"],
-  ["mid2_unast", "Mid2 Unast", "Mid 2 (8-16ft)", "1", 1, "% of mid 2 makes unassisted"],
-  ["far2_a", "Far2 A", "Far 2 (16ft+)", "i", 0, "Located 2s from 16 ft to the arc"],
-  ["far2_pct", "Far2%", "Far 2 (16ft+)", "1", 1, "Far 2 FG %"],
-  ["far2_rate", "Far2 rt", "Far 2 (16ft+)", "1", 0, "Est. far 2s per 100 FGA"],
-  ["far2_unast", "Far2 Unast", "Far 2 (16ft+)", "1", 1, "% of far 2 makes unassisted"],
-  ["c3_a", "C3 A", "Corner 3", "i", 0, "Located corner 3 attempts"],
-  ["c3_pct", "C3%", "Corner 3", "1", 1, "Corner 3 FG %"],
-  ["c3_shr", "C3 shr", "Corner 3", "1", 0, "% of located 3PA from the corner"],
-  ["c3_unast", "C3 Unast", "Corner 3", "1", 1, "% of corner 3 makes unassisted"],
-  ["ab3_a", "AB3 A", "Above-break 3", "i", 0, "Located above-the-break 3 attempts"],
-  ["ab3_pct", "AB3%", "Above-break 3", "1", 1, "Above-the-break 3 FG %"],
-  ["ab3_unast", "AB3 Unast", "Above-break 3", "1", 1, "% of above-break 3 makes unassisted"],
-
-  ["ast_rim_shr", "Ast→Rim", "Passing", "1", 0, "% of his assists that led to rim makes"],
-  ["ast_j2_shr", "Ast→J2", "Passing", "1", 0, "% of his assists that led to non-rim 2s"],
-  ["ast_three_shr", "Ast→3", "Passing", "1", 0, "% of his assists that led to 3s"],
-].map(([key, label, group, fmt, dir, desc]) => ({ key, label, group, fmt, dir, desc }));
-const COL = Object.fromEntries(COLS.map(c => [c.key, c]));
-const HEAD = ["name", "team", "conf"];
-
-const VIEWS = {
-  overview: { label: "Overview", cols: [...HEAD, "cls", "ht", "g", "mpg", "min_pct", "ppg", "usg", "ts", "efg", "tpr", "ftr", "ast_pct", "to_pct", "or_pct", "dr_pct", "blk_pct", "stl_pct"] },
-  self: { label: "Self-creation", cols: [...HEAD, "cls", "ht", "min_pct", "usg", "unast", "rim_a", "rim_unast", "rim_um40", "j2_a", "j2_unast", "j2_um40", "three_a", "three_unast", "three_um40", "ts"] },
-  zones: { label: "Shot zones", cols: [...HEAD, "min_pct", "pbp_fga", "rim_a", "rim_pct", "rim_rate", "j2_a", "j2_pct", "j2_rate", "three_a", "three_pct", "three_rate", "ftr", "ft_pct", "ts"] },
-  distance: { label: "Distance", cols: [...HEAD, "loc_cov", "close2_a", "close2_pct", "close2_rate", "mid2_a", "mid2_pct", "mid2_rate", "far2_a", "far2_pct", "far2_rate", "far2_unast", "c3_a", "c3_pct", "c3_shr", "ab3_a", "ab3_pct", "ab3_unast"] },
-  box: { label: "Per 40", cols: [...HEAD, "cls", "mpg", "pts40", "reb40", "ast40", "stl40", "blk40", "fta40", "pf40", "fg2_pct", "fg3_pct", "ft_pct", "ast_to"] },
-  passing: { label: "Passing", cols: [...HEAD, "cls", "min_pct", "usg", "apg", "ast_pct", "to_pct", "ast_to", "ast40", "ast_rim_shr", "ast_j2_shr", "ast_three_shr"] },
-  custom: { label: "Custom", cols: null },
+// ---------- state (mirrored into the URL so links are shareable) ----------
+const S = {
+  year: null, confOnly: false, topN: "", venue: "", from: "", to: "",
+  name: "", team: "All", state: "All", conf: "All", cls: "All", age: "All", role: "All",
+  minHt: "", maxHt: "", minWt: "", maxWt: "",
+  show: new Set(ROWS.filter(r => r && r.def).map(r => r.col)),
+  f: {},            // key -> {op: ">=" | "<=", v: "string"}
+  custom: "", sort: "prpg", dir: -1, hide: false,
 };
+S.f.min_pct = { op: ">=", v: "40" };
+function readURL() {
+  const p = new URLSearchParams(location.search);
+  for (const k of ["year", "topN", "venue", "from", "to", "name", "team", "state", "conf", "cls", "age", "role", "minHt", "maxHt", "minWt", "maxWt", "custom", "sort"]) if (p.has(k)) S[k] = p.get(k);
+  if (p.has("confOnly")) S.confOnly = p.get("confOnly") === "1";
+  if (p.has("hide")) S.hide = p.get("hide") === "1";
+  if (p.has("dir")) S.dir = +p.get("dir") || -1;
+  if (p.has("show")) S.show = new Set(p.get("show").split(",").filter(c => COLMAP[c]));
+  if (p.has("f")) { S.f = {}; for (const part of p.get("f").split(",")) { const m = part.match(/^(\w+)(ge|le)(-?[\d.]+)$/); if (m && STAT[m[1]]) S.f[m[1]] = { op: m[2] === "ge" ? ">=" : "<=", v: m[3] }; } }
+}
+function writeURL() {
+  const p = new URLSearchParams();
+  const def = { topN: "", venue: "", from: "", to: "", name: "", team: "All", state: "All", conf: "All", cls: "All", age: "All", role: "All", minHt: "", maxHt: "", minWt: "", maxWt: "", custom: "", sort: "prpg" };
+  p.set("year", S.year);
+  for (const [k, d] of Object.entries(def)) if (S[k] !== d && S[k] != null) p.set(k, S[k]);
+  if (S.confOnly) p.set("confOnly", "1");
+  if (S.hide) p.set("hide", "1");
+  if (S.dir !== -1) p.set("dir", S.dir);
+  const defShow = ROWS.filter(r => r && r.def).map(r => r.col);
+  const show = [...S.show];
+  if (show.length !== new Set(defShow).size || show.some(c => !defShow.includes(c))) p.set("show", show.join(","));
+  const fs = Object.entries(S.f).filter(([, o]) => o.v !== "" && !isNaN(+o.v)).map(([k, o]) => k + (o.op === ">=" ? "ge" : "le") + o.v);
+  if (fs.join(",") !== "min_pctge40") p.set("f", fs.join(","));
+  history.replaceState(null, "", "?" + p.toString());
+}
 
-const PRESETS = [
-  { name: "Self-creators at the rim", expr: "rim_a >= 100 and rim_unast >= 70", view: "self", sort: "rim_um40" },
-  { name: "Pull-up 3 shooters", expr: "three_a >= 100 and three_unast >= 40 and three_pct >= 34", view: "self", sort: "three_um40" },
-  { name: "Long-2 diet", expr: "far2_a >= 30 and far2_rate >= 7", view: "distance", sort: "far2_rate" },
-  { name: "Pure catch-and-shoot", expr: "three_a >= 120 and tpr >= 60 and three_unast <= 10", view: "zones", sort: "three_pct" },
-  { name: "Stretch bigs", expr: "ht >= 81 and tpr >= 35 and three_a >= 60", view: "overview", sort: "fg3_pct" },
-  { name: "Three-level self-creators", expr: "rim_unast >= 55 and j2_unast >= 75 and three_unast >= 30 and pbp_fga >= 250", view: "self", sort: "usg" },
-  { name: "Rim-feeding playmakers", expr: "ast_pct >= 25 and ast_rim_shr >= 55", view: "passing", sort: "ast_rim_shr" },
-  { name: "Corner specialists", expr: "c3_a >= 50 and c3_shr >= 40", view: "distance", sort: "c3_pct" },
-  { name: "Freshman shot creators", expr: "cls = 'Fr' and usg >= 24 and unast >= 50", view: "self", sort: "usg" },
-];
-const HIGH_MAJORS = ["ACC", "B10", "B12", "BE", "SEC"];
-
-// ---------- persisted state ----------
-const store = {
-  get(k, d) { try { const v = localStorage.getItem("shotlab:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem("shotlab:" + k, JSON.stringify(v)); } catch (e) {} },
-};
-let SEASONS = [];  // filled from the data, newest first
-const DEFAULTS = () => ({
-  season: SEASONS[0] || "2026", minPct: 40, cls: [], confs: [], search: "", filters: [], expr: "",
-  view: "overview", sort: { key: "ppg", dir: -1 }, custom: ["name", "team", "conf", "min_pct", "usg", "unast", "rim_unast", "j2_unast", "three_unast", "tpr", "ts"],
-  formulas: [],
-});
-const S = Object.assign(DEFAULTS(), store.get("state", {}));
-let limit = 100;
-const save = () => store.set("state", S);
-
-// ---------- expression language ----------
+// ---------- expression language for the custom filter ----------
 function tokenize(src) {
   const re = /\s*(?:(\d+\.?\d*|\.\d+)|([A-Za-z_][A-Za-z0-9_]*)|('[^']*'|"[^"]*")|(>=|<=|!=|==|<>|[=<>+\-*\/(),]))/y;
   const out = []; let i = 0;
   while (i < src.length) {
     if (/^\s*$/.test(src.slice(i))) break;
-    re.lastIndex = i;
-    const m = re.exec(src);
+    re.lastIndex = i; const m = re.exec(src);
     if (!m) throw new Error(`Can't read "${src.slice(i).trim().slice(0, 12)}"`);
     if (m[1] !== undefined) out.push({ t: "num", v: parseFloat(m[1]) });
-    else if (m[2] !== undefined) {
-      const w = m[2].toLowerCase();
-      if (["and", "or", "not", "in", "between", "true", "false", "null"].includes(w)) out.push({ t: "kw", v: w });
-      else out.push({ t: "id", v: w });
-    } else if (m[3] !== undefined) out.push({ t: "str", v: m[3].slice(1, -1) });
+    else if (m[2] !== undefined) { const w = m[2].toLowerCase(); out.push(["and", "or", "not", "in", "between", "null"].includes(w) ? { t: "kw", v: w } : { t: "id", v: w }); }
+    else if (m[3] !== undefined) out.push({ t: "str", v: m[3].slice(1, -1) });
     else out.push({ t: "op", v: m[4] === "==" ? "=" : m[4] === "<>" ? "!=" : m[4] });
     i = re.lastIndex;
   }
   return out;
 }
-const FUNCS = {
-  abs: a => a == null ? null : Math.abs(a),
-  round: (a, d) => a == null ? null : +a.toFixed(d ?? 0),
-  min: (...a) => a.some(x => x == null) ? null : Math.min(...a),
-  max: (...a) => a.some(x => x == null) ? null : Math.max(...a),
-  coalesce: (...a) => a.find(x => x != null) ?? null,
-};
-function editDist(a, b) {
-  const d = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    let prev = d[0]; d[0] = i;
-    for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; }
-  }
-  return d[b.length];
-}
+const FUNCS = { abs: a => a == null ? null : Math.abs(a), round: (a, d) => a == null ? null : +a.toFixed(d ?? 0), min: (...a) => a.some(x => x == null) ? null : Math.min(...a), max: (...a) => a.some(x => x == null) ? null : Math.max(...a) };
 function compile(src, known) {
   const toks = tokenize(src); let p = 0;
   const peek = () => toks[p], next = () => toks[p++];
-  const isOp = v => peek() && peek().t === "op" && peek().v === v;
-  const isKw = v => peek() && peek().t === "kw" && peek().v === v;
-  const expect = (t, v) => { const k = next(); if (!k || k.t !== t || (v && k.v !== v)) throw new Error(`Expected "${v || t}"${k ? ` near "${k.v}"` : " at the end"}`); return k; };
-  const cmpVal = (a, b) => (typeof a === "string" || typeof b === "string") ? String(a).toLowerCase().localeCompare(String(b).toLowerCase()) : a - b;
-  function orE() { let l = andE(); while (isKw("or")) { next(); const a = l, b = andE(); l = r => a(r) === true || b(r) === true; } return l; }
-  function andE() { let l = notE(); while (isKw("and")) { next(); const a = l, b = notE(); l = r => a(r) === true && b(r) === true; } return l; }
-  function notE() { if (isKw("not")) { next(); const a = notE(); return r => { const v = a(r); return v == null ? null : !v; }; } return cmpE(); }
+  const isOp = v => peek() && peek().t === "op" && peek().v === v, isKw = v => peek() && peek().t === "kw" && peek().v === v;
+  const expect = (t, v) => { const k = next(); if (!k || k.t !== t || (v && k.v !== v)) throw new Error(`Expected "${v || t}"${k ? ` near "${k.v}"` : " at the end"}`); };
+  const cmp = (a, b) => (typeof a === "string" || typeof b === "string") ? String(a).toLowerCase().localeCompare(String(b).toLowerCase()) : a - b;
+  const orE = () => { let l = andE(); while (isKw("or")) { next(); const a = l, b = andE(); l = r => a(r) === true || b(r) === true; } return l; };
+  const andE = () => { let l = notE(); while (isKw("and")) { next(); const a = l, b = notE(); l = r => a(r) === true && b(r) === true; } return l; };
+  const notE = () => { if (isKw("not")) { next(); const a = notE(); return r => { const v = a(r); return v == null ? null : !v; }; } return cmpE(); };
   function cmpE() {
     const l = addE();
-    if (isKw("between")) {
-      next(); const lo = addE(); expect("kw", "and"); const hi = addE();
-      return r => { const v = l(r), a = lo(r), b = hi(r); return v == null || a == null || b == null ? null : cmpVal(v, a) >= 0 && cmpVal(v, b) <= 0; };
-    }
-    let neg = false;
-    if (isKw("not") && toks[p + 1] && toks[p + 1].t === "kw" && toks[p + 1].v === "in") { next(); neg = true; }
-    if (isKw("in")) {
-      next(); expect("op", "("); const items = [addE()];
-      while (isOp(",")) { next(); items.push(addE()); }
-      expect("op", ")");
-      return r => { const v = l(r); if (v == null) return null; const hit = items.some(f => { const x = f(r); return x != null && cmpVal(v, x) === 0; }); return neg ? !hit : hit; };
-    }
+    if (isKw("between")) { next(); const lo = addE(); expect("kw", "and"); const hi = addE(); return r => { const v = l(r), a = lo(r), b = hi(r); return v == null || a == null || b == null ? null : cmp(v, a) >= 0 && cmp(v, b) <= 0; }; }
+    if (isKw("in")) { next(); expect("op", "("); const items = [addE()]; while (isOp(",")) { next(); items.push(addE()); } expect("op", ")"); return r => { const v = l(r); return v == null ? null : items.some(f => { const x = f(r); return x != null && cmp(v, x) === 0; }); }; }
     const k = peek();
     if (k && k.t === "op" && ["=", "!=", "<", ">", "<=", ">="].includes(k.v)) {
       next(); const r2 = addE(), op = k.v;
-      return r => {
-        const a = l(r), b = r2(r); if (a == null || b == null) return null;
-        const c = cmpVal(a, b);
-        return op === "=" ? c === 0 : op === "!=" ? c !== 0 : op === "<" ? c < 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : c >= 0;
-      };
+      return r => { const a = l(r), b = r2(r); if (a == null || b == null) return null; const c = cmp(a, b); return op === "=" ? c === 0 : op === "!=" ? c !== 0 : op === "<" ? c < 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : c >= 0; };
     }
     return l;
   }
-  function addE() { let l = mulE(); while (isOp("+") || isOp("-")) { const op = next().v, a = l, b = mulE(); l = r => { const x = a(r), y = b(r); return x == null || y == null ? null : op === "+" ? x + y : x - y; }; } return l; }
-  function mulE() { let l = unE(); while (isOp("*") || isOp("/")) { const op = next().v, a = l, b = unE(); l = r => { const x = a(r), y = b(r); return x == null || y == null ? null : op === "*" ? x * y : (y === 0 ? null : x / y); }; } return l; }
-  function unE() { if (isOp("-")) { next(); const a = unE(); return r => { const v = a(r); return v == null ? null : -v; }; } return prim(); }
+  const addE = () => { let l = mulE(); while (isOp("+") || isOp("-")) { const op = next().v, a = l, b = mulE(); l = r => { const x = a(r), y = b(r); return x == null || y == null ? null : op === "+" ? x + y : x - y; }; } return l; };
+  const mulE = () => { let l = unE(); while (isOp("*") || isOp("/")) { const op = next().v, a = l, b = unE(); l = r => { const x = a(r), y = b(r); return x == null || y == null ? null : op === "*" ? x * y : (y === 0 ? null : x / y); }; } return l; };
+  const unE = () => { if (isOp("-")) { next(); const a = unE(); return r => { const v = a(r); return v == null ? null : -v; }; } return prim(); };
   function prim() {
     const k = next();
-    if (!k) throw new Error("Query ends too early");
-    if (k.t === "num") return () => k.v;
-    if (k.t === "str") return () => k.v;
-    if (k.t === "kw" && k.v === "true") return () => true;
-    if (k.t === "kw" && k.v === "false") return () => false;
+    if (!k) throw new Error("Filter ends too early");
+    if (k.t === "num" || k.t === "str") return () => k.v;
     if (k.t === "kw" && k.v === "null") return () => null;
     if (k.t === "op" && k.v === "(") { const e = orE(); expect("op", ")"); return e; }
     if (k.t === "id") {
-      if (isOp("(")) {
-        const f = FUNCS[k.v]; if (!f) throw new Error(`Unknown function "${k.v}"`);
-        next(); const args = [];
-        if (!isOp(")")) { args.push(addE()); while (isOp(",")) { next(); args.push(addE()); } }
-        expect("op", ")");
-        return r => f(...args.map(a => a(r)));
-      }
-      if (!known.has(k.v)) {
-        const near = [...known].map(c => [c, editDist(c, k.v)]).filter(([, d]) => d <= 3).sort((a, b) => a[1] - b[1]).slice(0, 3).map(([c]) => c);
-        throw new Error(`Unknown column "${k.v}"` + (near.length ? `. Did you mean ${near.join(", ")}?` : ""));
-      }
+      if (isOp("(")) { const f = FUNCS[k.v]; if (!f) throw new Error(`Unknown function "${k.v}"`); next(); const args = []; if (!isOp(")")) { args.push(addE()); while (isOp(",")) { next(); args.push(addE()); } } expect("op", ")"); return r => f(...args.map(a => a(r))); }
+      if (!known.has(k.v)) throw new Error(`Unknown column "${k.v}". Hover a column header to see its key.`);
       return r => r[k.v] ?? null;
     }
     throw new Error(`Unexpected "${k.v}"`);
@@ -514,323 +338,373 @@ function compile(src, known) {
   if (p < toks.length) throw new Error(`Unexpected "${toks[p].v}"`);
   return fn;
 }
+const KNOWN = new Set([...Object.keys(STAT), "name", "team", "conf", "cls", "ht", "st", "role", "pick", "fga", "pts", "ast", "orb", "drb", "stl", "blk", "tov", "min"]);
 
-// ---------- data ----------
-let ROWS = [];
-function parseCSV(text) {
-  const rows = []; let row = [], f = "", q = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
-    else if (c === '"') q = true;
-    else if (c === ",") { row.push(f); f = ""; }
-    else if (c === "\n") { row.push(f); rows.push(row); row = []; f = ""; }
-    else if (c !== "\r") f += c;
+// ---------- data loading ----------
+const cache = new Map();
+async function getText(url) { const r = await fetch(url); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r.text(); }
+function parseObjects(text) {  // small files with text fields
+  const lines = text.split(/\r?\n/).filter(Boolean), head = splitCSV(lines[0]);
+  return lines.slice(1).map(l => { const v = splitCSV(l), o = {}; head.forEach((h, i) => { const x = v[i]; o[h] = x === "" || x == null ? null : (isNaN(+x) ? x : +x); }); return o; });
+}
+function splitCSV(line) {
+  if (line.indexOf('"') < 0) return line.split(",");
+  const out = []; let f = "", q = false;
+  for (let i = 0; i < line.length; i++) { const c = line[i]; if (q) { if (c === '"') { if (line[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; } else if (c === '"') q = true; else if (c === ",") { out.push(f); f = ""; } else f += c; }
+  out.push(f); return out;
+}
+function parseColumns(text) {  // big all-numeric files -> {name: Float64Array}
+  const lines = text.split("\n"); const head = lines[0].trim().split(","); let n = lines.length - 1; while (n > 0 && !lines[n].trim()) n--;
+  const cols = head.map(() => new Float64Array(n));
+  for (let i = 1; i <= n; i++) { const v = lines[i].split(","); for (let j = 0; j < head.length; j++) { const x = v[j]; cols[j][i - 1] = x === "" || x === undefined ? 0 : +x; } }
+  const o = { n }; head.forEach((h, j) => o[h.trim()] = cols[j]); return o;
+}
+async function loadSeason(y) {
+  if (cache.has(y)) return cache.get(y);
+  const base = `data/{t}/season=${y}/part0.csv`;
+  const [teams, players, tg, pg] = await Promise.all(["teams", "players", "tgames", "pgames"].map(t => getText(base.replace("{t}", t))));
+  const D = { teams: new Map(parseObjects(teams).map(t => [t.tid, t])), players: new Map(parseObjects(players).map(p => [p.pid, p])), tg: parseColumns(tg), pg: parseColumns(pg) };
+  // index team-game rows and link each player-game to its team and opponent rows
+  const key = (g, t) => g * 1e6 + t, tIdx = new Map();
+  for (let i = 0; i < D.tg.n; i++) tIdx.set(key(D.tg.gid[i], D.tg.tid[i]), i);
+  D.pgT = new Int32Array(D.pg.n); D.pgO = new Int32Array(D.pg.n);
+  for (let i = 0; i < D.pg.n; i++) { const t = tIdx.get(key(D.pg.gid[i], D.pg.tid[i])); D.pgT[i] = t; D.pgO[i] = tIdx.get(key(D.pg.gid[i], D.tg.opp[t])) ?? -1; }
+  // one accumulator slot per player-team
+  const slot = new Map(); D.pgS = new Int32Array(D.pg.n); D.slots = [];
+  for (let i = 0; i < D.pg.n; i++) { const k = D.pg.pid[i] * 1e6 + D.pg.tid[i]; let s = slot.get(k); if (s === undefined) { s = D.slots.length; slot.set(k, s); D.slots.push([D.pg.pid[i], D.pg.tid[i]]); } D.pgS[i] = s; }
+  cache.set(y, D); return D;
+}
+
+// ---------- aggregation ----------
+const PF = ["gs", "min", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "orb", "drb", "ast", "tov", "stl", "blk", "pf", "pts", "pbp", "rm", "ra", "rum", "dm", "da", "jm", "ja", "jum", "t3m", "t3a", "t3um", "lf", "jl", "tl", "sm", "sa", "mm", "ma", "mum", "lm", "la", "lum", "cm", "ca", "bm", "ba", "ar", "aj", "a3"];
+const TF = ["min", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "orb", "drb", "ast", "tov", "stl", "blk", "pf", "pts"];
+function aggregate(D) {
+  const tg = D.tg, pg = D.pg, teams = D.teams;
+  const from = /^\d{8}$/.test(S.from) ? +S.from : 0, to = /^\d{8}$/.test(S.to) ? +S.to : 99999999;
+  const topN = parseInt(S.topN) || 0, venue = S.venue === "" ? null : +S.venue;
+  const pass = new Uint8Array(tg.n);
+  for (let i = 0; i < tg.n; i++) {
+    if (tg.dt[i] < from || tg.dt[i] > to) continue;
+    if (S.confOnly && !tg.cg[i]) continue;
+    if (venue !== null && tg.loc[i] !== venue) continue;
+    if (topN) { const r = teams.get(tg.opp[i])?.rank; if (!r || r > topN) continue; }
+    pass[i] = 1;
   }
-  if (f !== "" || row.length) { row.push(f); rows.push(row); }
-  return rows;
-}
-function knownCols() { return new Set([...COLS.map(c => c.key), "id", ...S.formulas.map(f => f.name)]); }
-function applyFormulas() {
-  const known = knownCols();
-  for (const f of S.formulas) {
-    try { f.fn = compile(f.expr, known); f.err = null; } catch (e) { f.fn = null; f.err = e.message; }
+  const NP = PF.length, NT = TF.length, W = NP + 2 * NT + 1, ns = D.slots.length;
+  const acc = new Float64Array(ns * W);
+  const pc = PF.map(f => pg[f]), tc = TF.map(f => tg[f]);
+  for (let i = 0; i < pg.n; i++) {
+    const t = D.pgT[i]; if (!pass[t]) continue;
+    const o = D.pgO[i], b = D.pgS[i] * W;
+    acc[b] += 1;
+    for (let j = 0; j < NP; j++) acc[b + 1 + j] += pc[j][i];
+    for (let j = 0; j < NT; j++) acc[b + 1 + NP + j] += tc[j][t];
+    if (o >= 0) for (let j = 0; j < NT; j++) acc[b + 1 + NP + NT + j] += tc[j][o];
   }
-  for (const r of ROWS) for (const f of S.formulas) { if (f.fn) { const v = f.fn(r); r[f.name] = typeof v === "number" && isFinite(v) ? v : (v === true ? 1 : v === false ? 0 : null); } }
-  pctCache.clear();
-}
-const colMeta = k => COL[k] || (S.formulas.find(f => f.name === k) ? { key: k, label: k, group: "Formula", fmt: "2", dir: 1, desc: S.formulas.find(f => f.name === k).expr } : null);
-
-// ---------- percentiles for shading ----------
-const pctCache = new Map();
-function pctTable(season) {
-  if (pctCache.has(season)) return pctCache.get(season);
-  const pool = ROWS.filter(r => (season === "all" || String(r.season) === season) && r.min_pct >= 40);
-  const t = {};
-  const keys = [...COLS.filter(c => c.dir !== 0).map(c => c.key), ...S.formulas.map(f => f.name)];
-  for (const k of keys) t[k] = pool.map(r => r[k]).filter(v => v != null).sort((a, b) => a - b);
-  pctCache.set(season, t); return t;
-}
-function percentile(arr, v) {
-  if (!arr || !arr.length || v == null) return null;
-  let lo = 0, hi = arr.length;
-  while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < v) lo = m + 1; else hi = m; }
-  let hi2 = lo; while (hi2 < arr.length && arr[hi2] === v) hi2++;
-  return ((lo + hi2) / 2) / arr.length;
-}
-function shade(p, dir) {
-  if (p == null || !dir) return "";
-  const q = dir > 0 ? p : 1 - p;
-  const d = Math.abs(q - 0.5) * 2;
-  if (d < 0.12) return "";
-  const amt = Math.round(d * 58);
-  return `background: color-mix(in oklab, var(${q > 0.5 ? "--hi" : "--lo"}) ${amt}%, var(--surface));`;
-}
-
-// ---------- formatting ----------
-function fmt(v, f) {
-  if (v == null || v === "") return "—";
-  if (f === "s") return esc(v);
-  if (f === "ht") return `${Math.floor(v / 12)}'${v % 12}"`;
-  if (f === "i") return Math.round(v).toLocaleString("en-US");
-  if (f === "2") return v.toFixed(2);
-  return v.toFixed(1);
-}
-const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-// ---------- filtering ----------
-let exprFn = null;
-function compileExpr() {
-  const box = document.getElementById("expr"), msg = document.getElementById("exprMsg");
-  exprFn = null;
-  if (!S.expr.trim()) { box.classList.remove("bad"); msg.className = "msg"; msg.textContent = "Leave empty to skip. Hover a column header to see its name for queries."; return; }
-  try { exprFn = compile(S.expr, knownCols()); box.classList.remove("bad"); msg.className = "msg"; msg.textContent = "Query applied."; }
-  catch (e) { box.classList.add("bad"); msg.className = "msg err"; msg.textContent = e.message; }
-}
-function builderFns() {
-  const fns = [];
-  for (const f of S.filters) {
-    const m = colMeta(f.col); if (!m || f.val === "" || f.val == null) continue;
-    if (m.fmt === "s") {
-      const v = String(f.val).toLowerCase();
-      fns.push(r => { const x = String(r[f.col] ?? "").toLowerCase(); return f.op === "!=" ? x !== v : f.op === "~" ? x.includes(v) : x === v; });
-    } else {
-      const a = parseFloat(f.val), b = parseFloat(f.val2);
-      if (isNaN(a)) continue;
-      fns.push(r => {
-        const x = r[f.col]; if (x == null) return false;
-        switch (f.op) { case ">=": return x >= a; case "<=": return x <= a; case ">": return x > a; case "<": return x < a; case "=": return x === a; case "!=": return x !== a; case "btw": return isNaN(b) ? x >= a : x >= a && x <= b; }
-        return true;
-      });
-    }
+  const out = [];
+  for (let s = 0; s < ns; s++) {
+    const b = s * W; if (!acc[b]) continue;
+    const a = { g: acc[b] }; PF.forEach((f, j) => a[f] = acc[b + 1 + j]);
+    a.t = {}; a.o = {}; TF.forEach((f, j) => { a.t[f] = acc[b + 1 + NP + j]; a.o[f] = acc[b + 1 + NP + NT + j]; });
+    const [pid, tid] = D.slots[s];
+    out.push(derive(a, D.players.get(pid) || { pid, name: String(pid) }, teams.get(tid) || { tid }));
   }
-  return fns;
-}
-function currentRows() {
-  const bf = builderFns(), q = S.search.trim().toLowerCase();
-  const out = ROWS.filter(r =>
-    (S.season === "all" || String(r.season) === S.season) &&
-    (r.min_pct ?? 0) >= (S.minPct || 0) &&
-    (!S.cls.length || S.cls.includes(r.cls)) &&
-    (!S.confs.length || S.confs.includes(r.conf)) &&
-    (!q || r.name.toLowerCase().includes(q) || r.team.toLowerCase().includes(q)) &&
-    bf.every(f => f(r)) &&
-    (!exprFn || exprFn(r) === true));
-  const { key, dir } = S.sort, m = colMeta(key);
-  out.sort((a, b) => {
-    const x = a[key], y = b[key];
-    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
-    return (m && m.fmt === "s" ? String(x).localeCompare(String(y)) : x - y) * dir;
-  });
   return out;
 }
-function visibleCols() {
-  let cols = S.view === "custom" ? S.custom.slice() : VIEWS[S.view].cols.slice();
-  if (S.season === "all" && !cols.includes("season")) cols.splice(1, 0, "season");
-  for (const f of S.formulas) if (f.fn && !cols.includes(f.name)) cols.push(f.name);
-  return cols.filter(c => colMeta(c));
+const div = (a, b) => b ? a / b : null;
+const pct = (a, b) => b ? 100 * a / b : null;
+function derive(a, p, tm) {
+  const t = a.t, o = a.o, mp = a.min, tmp = t.min;
+  const r = { pid: p.pid, name: p.name, team: tm.team, conf: tm.conf, tid: tm.tid, cls: p.cls, ht: p.ht, wt: p.wt, age: p.age, st: p.st, pick: p.dp, dy: p.dy };
+  const share = tmp ? mp / (tmp / 5) : 0;  // fraction of team minutes
+  r.g = a.g; r.totmin = mp; r.min_pct = share * 100; r.mpg = div(mp, a.g);
+  r.fga = a.fga; r.pts = a.pts; r.ast = a.ast; r.orb = a.orb; r.drb = a.drb; r.stl = a.stl; r.blk = a.blk; r.tov = a.tov; r.min = mp;
+  const tposs = t.fga - t.orb + t.tov + 0.475 * t.fta, oposs = o.fga - o.orb + o.tov + 0.475 * o.fta;
+  // 0.475 free-throw weight, as T-Rank uses
+  r.usg = mp ? 100 * (a.fga + 0.475 * a.fta + a.tov) * (tmp / 5) / (mp * (t.fga + 0.475 * t.fta + t.tov)) : null;
+  r.efg = pct(a.fgm + 0.5 * a.tpm, a.fga); r.ts = pct(a.pts, 2 * (a.fga + 0.475 * a.fta));
+  r.orp = mp ? 100 * a.orb * (tmp / 5) / (mp * (t.orb + o.drb)) : null;
+  r.drp = mp ? 100 * a.drb * (tmp / 5) / (mp * (t.drb + o.orb)) : null;
+  r.astp = share ? pct(a.ast, share * t.fgm - a.fgm) : null;
+  r.top = pct(a.tov, a.fga + 0.475 * a.fta + a.tov); r.ato = div(a.ast, a.tov);
+  r.blkp = mp ? 100 * a.blk * (tmp / 5) / (mp * (o.fga - o.tpa)) : null;
+  r.stlp = mp ? 100 * a.stl * (tmp / 5) / (mp * oposs) : null;
+  r.ftr = pct(a.fta, a.fga); r.fc40 = div(40 * a.pf, mp);
+  r.ftm = a.ftm; r.fta = a.fta; r.ftpct = pct(a.ftm, a.fta);
+  r.fg2m = a.fgm - a.tpm; r.fg2a = a.fga - a.tpa; r.fg2pct = pct(r.fg2m, r.fg2a);
+  r.tpm = a.tpm; r.tpa = a.tpa; r.tppct = pct(a.tpm, a.tpa); r.tpr = pct(a.tpa, a.fga);
+  r.tp100 = share && tposs ? 100 * a.tpa / (tposs * share) : null;
+  r.ortg = ortg(a, t, o); r.drtg = drtg(a, t, o, tposs, oposs);
+  r.prpg = r.ortg != null && r.usg != null ? (r.ortg - 88) / 100 * (r.usg / 100) * share * 68 : null;
+  r.ppg = div(a.pts, a.g); r.rpg = div(a.orb + a.drb, a.g); r.apg = div(a.ast, a.g);
+  r.pts40 = div(40 * a.pts, mp); r.reb40 = div(40 * (a.orb + a.drb), mp); r.ast40 = div(40 * a.ast, mp); r.stl40 = div(40 * a.stl, mp); r.blk40 = div(40 * a.blk, mp);
+  r.bmi = p.wt && p.ht ? 703 * p.wt / (p.ht * p.ht) : null;
+  // play-by-play zones (only games with play-by-play)
+  const pf = a.ra + a.ja + a.t3a;
+  r.pbpg = pct(a.pbp, a.g); r.loc = pct(a.lf, pf);
+  r.dm = a.dm; r.da = a.da; r.dpct = pct(a.dm, a.da);
+  r.rm = a.rm; r.ra = a.ra; r.rpct = pct(a.rm, a.ra); r.jm = a.jm; r.ja = a.ja; r.jpct = pct(a.jm, a.ja);
+  r.unast = pct(a.rum + a.jum + a.t3um, a.rm + a.jm + a.t3m);
+  r.r_un = pct(a.rum, a.rm); r.j_un = pct(a.jum, a.jm); r.t_un = pct(a.t3um, a.t3m);
+  r.r_rate = pct(a.ra, pf); r.j_rate = pct(a.ja, pf);
+  r.r_um40 = div(40 * a.rum, mp); r.j_um40 = div(40 * a.jum, mp); r.t_um40 = div(40 * a.t3um, mp);
+  r.sm = a.sm; r.sa = a.sa; r.spct = pct(a.sm, a.sa);
+  r.mm = a.mm; r.ma = a.ma; r.mpct = pct(a.mm, a.ma); r.m_un = pct(a.mum, a.mm);
+  r.lm = a.lm; r.la = a.la; r.lpct = pct(a.lm, a.la); r.l_un = pct(a.lum, a.lm);
+  r.l_rate = a.jl && pf ? 100 * (a.la / a.jl) * (a.ja / pf) : null;
+  r.cm = a.cm; r.ca = a.ca; r.cpct = pct(a.cm, a.ca); r.c_shr = pct(a.ca, a.tl);
+  r.bm = a.bm; r.ba = a.ba; r.bpct = pct(a.bm, a.ba);
+  const ag = a.ar + a.aj + a.a3; r.a_rim = pct(a.ar, ag); r.a_3 = pct(a.a3, ag);
+  r.role = role(r);
+  return r;
+}
+// Dean Oliver individual offensive rating (Basketball-Reference formulation)
+function ortg(p, t, o) {
+  if (!p.min || !t.min || !t.fgm || t.fga <= p.fga) return null;
+  const mpShare = p.min / (t.min / 5);
+  const qAST = mpShare * (1.14 * ((t.ast - p.ast) / t.fgm)) + (((t.ast / t.min) * p.min * 5 - p.ast) / ((t.fgm / t.min) * p.min * 5 - p.fgm || 1)) * (1 - mpShare);
+  const ftPct = p.fta ? p.ftm / p.fta : 0, tftPct = t.fta ? t.ftm / t.fta : 0;
+  const ptsFG = p.fga ? (p.pts - p.ftm) / (2 * p.fga) : 0;
+  const FG_Part = p.fgm * (1 - 0.5 * ptsFG * qAST);
+  const AST_Part = 0.5 * (((t.pts - t.ftm) - (p.pts - p.ftm)) / (2 * (t.fga - p.fga))) * p.ast;
+  const FT_Part = p.fta ? (1 - (1 - ftPct) ** 2) * 0.4 * p.fta : 0;
+  const TSP = t.fgm + (1 - (1 - tftPct) ** 2) * t.fta * 0.4;
+  const tORB = t.orb / (t.orb + o.drb);
+  const tPlay = TSP / (t.fga + t.fta * 0.4 + t.tov);
+  const tORBw = ((1 - tORB) * tPlay) / ((1 - tORB) * tPlay + tORB * (1 - tPlay));
+  const ORB_Part = p.orb * tORBw * tPlay;
+  const ScPoss = (FG_Part + AST_Part + FT_Part) * (1 - (t.orb / TSP) * tORBw * tPlay) + ORB_Part;
+  const FGxPoss = (p.fga - p.fgm) * (1 - 1.07 * tORB);
+  const FTxPoss = p.fta ? ((1 - ftPct) ** 2) * 0.4 * p.fta : 0;
+  const TotPoss = ScPoss + FGxPoss + FTxPoss + p.tov;
+  if (TotPoss <= 0) return null;
+  const PP_FG = 2 * (p.fgm + 0.5 * p.tpm) * (1 - 0.5 * ptsFG * qAST);
+  const PP_AST = (t.fgm - p.fgm) ? 2 * ((t.fgm - p.fgm + 0.5 * (t.tpm - p.tpm)) / (t.fgm - p.fgm)) * 0.5 * (((t.pts - t.ftm) - (p.pts - p.ftm)) / (2 * (t.fga - p.fga))) * p.ast : 0;
+  const PP_ORB = p.orb * tORBw * tPlay * (t.pts / TSP);
+  const PProd = (PP_FG + PP_AST + p.ftm) * (1 - (t.orb / TSP) * tORBw * tPlay) + PP_ORB;
+  return 100 * PProd / TotPoss;
+}
+// Dean Oliver individual defensive rating (Basketball-Reference formulation)
+function drtg(p, t, o, tposs, oposs) {
+  if (!p.min || !t.min || !o.fga) return null;
+  const poss = (tposs + oposs) / 2;
+  const DOR = o.orb / (o.orb + t.drb), DFG = (o.fgm) / o.fga;
+  const FMwt = (DFG * (1 - DOR)) / (DFG * (1 - DOR) + (1 - DFG) * DOR);
+  const Stops1 = p.stl + p.blk * FMwt * (1 - 1.07 * DOR) + p.drb * (1 - FMwt);
+  const oftPct = o.fta ? o.ftm / o.fta : 0;
+  const Stops2 = (((o.fga - o.fgm - t.blk) / t.min) * FMwt * (1 - 1.07 * DOR) + ((o.tov - t.stl) / t.min)) * p.min + (t.pf ? (p.pf / t.pf) * 0.4 * o.fta * (1 - oftPct) ** 2 : 0);
+  const StopPct = ((Stops1 + Stops2) * o.min) / (poss * p.min);
+  const TmDRtg = 100 * o.pts / poss;
+  const DPtsPerScPoss = o.pts / (o.fgm + (1 - (1 - oftPct) ** 2) * o.fta * 0.4);
+  return TmDRtg + 0.2 * (100 * DPtsPerScPoss * (1 - StopPct) - TmDRtg);
+}
+function role(r) {
+  const h = r.ht, a = r.astp ?? 0, t = r.tpr ?? 0, o = r.orp ?? 0, b = r.blkp ?? 0, u = r.usg ?? 0;
+  if (r.astp == null) return null;
+  const guardSized = !h || h <= 78;
+  if (a >= 28 && guardSized) return u >= 26 ? "Scoring PG" : "Pure PG";
+  if (a >= 21 && guardSized) return u >= 27 ? "Scoring PG" : "Combo G";
+  const big = (h && h >= 81) || o >= 9 || b >= 5;
+  if (big) { if (t >= 30) return "Stretch 4"; if (b >= 7 || (h && h >= 83) || o >= 12) return "C"; return "PF/C"; }
+  if (a >= 15 && (!h || h <= 77)) return "Combo G";
+  if (h ? h <= 78 : t >= 40) return "Wing G";
+  return "Wing F";
 }
 
-// ---------- rendering ----------
-let cached = [];
-function refresh(keepLimit) {
-  if (!keepLimit) limit = 100;
-  cached = currentRows();
-  const cols = visibleCols(), pt = pctTable(S.season);
-  const sk = S.sort.key;
-  let h = "<table><thead><tr><th class='rk' scope='col'>#</th>";
-  for (const k of cols) {
-    const m = colMeta(k), cls = [m.fmt === "s" ? "s" : "", k === "name" ? "name" : "", k === sk ? "sorted" : ""].join(" ");
-    h += `<th scope="col" class="${cls}" data-k="${k}" data-arrow="${S.sort.dir > 0 ? "▲" : "▼"}" title="${esc(k)}: ${esc(m.desc)}"><span class="grp">${esc(m.group)}</span>${esc(m.label)}</th>`;
-  }
+// ---------- filtering, sorting, shading ----------
+let DATA = null, rowsAll = [], rowsShown = [], showAllRows = false, customFn = null, customErr = "";
+function filtered() {
+  const nm = S.name.trim().toLowerCase(), cls = CLASSES[S.cls], age = AGES[S.age];
+  const minHt = parseFloat(S.minHt), maxHt = parseFloat(S.maxHt), minWt = parseFloat(S.minWt), maxWt = parseFloat(S.maxWt);
+  const fs = Object.entries(S.f).filter(([, o]) => o.v !== "" && !isNaN(+o.v)).map(([k, o]) => [k, o.op, +o.v]);
+  return rowsAll.filter(r => {
+    if (nm && !r.name.toLowerCase().includes(nm)) return false;
+    if (S.team !== "All" && r.team !== S.team) return false;
+    if (S.state !== "All" && r.st !== S.state) return false;
+    if (S.conf === "H.Maj" ? !HIGH_MAJ.has(r.conf) : S.conf === "Mid.Maj" ? HIGH_MAJ.has(r.conf) : S.conf !== "All" && r.conf !== S.conf) return false;
+    if (cls && !cls.includes(r.cls)) return false;
+    if (age && (r.age == null || r.age < age[0] || r.age >= age[1])) return false;
+    if (S.role !== "All" && r.role !== S.role) return false;
+    if (!isNaN(minHt) && !(r.ht >= minHt)) return false;
+    if (!isNaN(maxHt) && !(r.ht <= maxHt)) return false;
+    if (!isNaN(minWt) && !(r.wt >= minWt)) return false;
+    if (!isNaN(maxWt) && !(r.wt <= maxWt)) return false;
+    for (const [k, op, v] of fs) { const x = r[k]; if (x == null || (op === ">=" ? x < v : x > v)) return false; }
+    if (customFn && customFn(r) !== true) return false;
+    return true;
+  });
+}
+let pctPool = {};
+function buildPool() {
+  const pool = rowsAll.filter(r => r.min_pct >= 40);
+  pctPool = {};
+  for (const s of Object.values(STAT)) if (s.dir) pctPool[s.key] = pool.map(r => r[s.key]).filter(v => v != null).sort((a, b) => a - b);
+}
+function shade(key, v) {
+  const s = STAT[key], arr = pctPool[key];
+  if (!s || !s.dir || v == null || !arr || arr.length < 20) return "";
+  let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < v) lo = m + 1; else hi = m; }
+  let q = lo / arr.length; if (s.dir < 0) q = 1 - q;
+  const d = Math.abs(q - 0.5) * 2; if (d < 0.2) return "";
+  return `background-color:rgba(var(${q > 0.5 ? "--good" : "--bad"}),${(d * 0.75).toFixed(2)})`;
+}
+function fmt(v, f) { if (v == null || !isFinite(v)) return ""; return f === 0 ? Math.round(v) : v.toFixed(f); }
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const htStr = h => h ? `${Math.floor(h / 12)}-${h % 12}` : "";
+
+function render() {
+  const rows = filtered();
+  const sk = S.sort, dir = S.dir, strKey = ["name", "team", "conf", "role"].includes(sk);
+  rows.sort((a, b) => { const x = a[sk], y = b[sk]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (strKey ? String(x).localeCompare(String(y)) : x - y) * dir; });
+  rowsShown = rows;
+  const cols = COLS.filter(c => S.show.has(c.id));
+  const hd = (key, label, title) => `<th data-k="${key}" class="${S.sort === key ? "sorted" : ""}" title="${esc(title || key)}">${label}</th>`;
+  let h = `<table class="res"><thead><tr><th>Rk</th>${hd("pick", "Pick", "pick: NBA draft pick")}<th></th><th></th>${hd("name", "Player")}${hd("team", "Team")}${hd("conf", "Conf")}${hd("role", "Role", "role (estimated)")}`;
+  for (const c of cols) { const k = c.parts ? c.parts[2] : c.id; h += hd(k, c.head, c.parts ? `${c.parts.join(" / ")}: ${STAT[c.parts[2]].label.replace(/ ?%$/, "")}` : `${c.id}: ${STAT[c.id].label}`); }
   h += "</tr></thead><tbody>";
-  const n = Math.min(limit, cached.length);
-  for (let i = 0; i < n; i++) {
-    const r = cached[i];
-    h += `<tr><td class="rk">${i + 1}</td>`;
-    for (const k of cols) {
-      const m = colMeta(k), v = r[k];
-      if (k === "name") h += `<td class="s name"><a href="https://www.espn.com/mens-college-basketball/player/_/id/${r.id}" target="_blank" rel="noopener">${esc(v)}</a></td>`;
-      else h += `<td class="${m.fmt === "s" ? "s" : ""}" style="${shade(percentile(pt[k], v), m.dir)}">${fmt(v, m.fmt)}</td>`;
+  const lim = showAllRows ? rows.length : Math.min(rows.length, 500);
+  for (let i = 0; i < lim; i++) {
+    const r = rows[i];
+    h += `<tr><td>${i + 1}</td><td>${r.pick && r.dy >= DATA.year ? r.pick : ""}</td><td>${CLS_NAME[r.cls] || ""}</td><td>${htStr(r.ht)}</td>`;
+    h += `<td class="l"><a href="https://www.espn.com/mens-college-basketball/player/_/id/${r.pid}" target="_blank" rel="noopener">${esc(r.name)}</a></td>`;
+    h += `<td class="l"><a href="#" data-team="${esc(r.team)}">${esc(r.team)}</a></td><td>${esc(r.conf)}</td><td>${esc(r.role || "")}</td>`;
+    for (const c of cols) {
+      if (c.parts) { const [m, a, p] = c.parts; h += `<td class="sh" style="${shade(p, r[p])}">${fmt(r[p], 1)}<small>${fmt(r[m], 0)}-${fmt(r[a], 0)}</small></td>`; }
+      else { const s = STAT[c.id]; h += `<td style="${shade(c.id, r[c.id])}">${c.id === "prpg" ? `<b>${fmt(r[c.id], s.fmt)}</b>` : fmt(r[c.id], s.fmt)}</td>`; }
     }
     h += "</tr>";
   }
-  if (!cached.length) h += `<tr><td colspan="${cols.length + 1}" class="s" style="padding:24px">No players match. Loosen a filter, or lower the minimum minutes.</td></tr>`;
+  if (!rows.length) h += `<tr><td colspan="${8 + cols.length}" class="l" style="padding:10px">No players match these filters.</td></tr>`;
   h += "</tbody></table>";
-  document.getElementById("tablewrap").innerHTML = h;
-  const total = ROWS.filter(r => S.season === "all" || String(r.season) === S.season).length;
-  document.getElementById("count").innerHTML = `<b>${cached.length.toLocaleString("en-US")}</b> of ${total.toLocaleString("en-US")} player-seasons`;
-  document.getElementById("more").hidden = cached.length <= limit;
-  const usesLoc = cols.some(c => /^(close2|mid2|far2|c3|ab3)_/.test(c)) || /\b(close2|mid2|far2|c3|ab3)_/.test(S.expr) || S.filters.some(f => /^(close2|mid2|far2|c3|ab3)_/.test(f.col));
-  const note = document.getElementById("locNote");
-  note.hidden = !(usesLoc && (S.season === "all" || +S.season < 2026));
-  note.textContent = "Distance columns only count located shots. ESPN has locations for about 98% of 2026 shots but only about 26% of 2025 and 5% of 2024 shots, so those seasons' distance numbers are partial (see Loc%).";
-  save();
+  document.getElementById("tbl").innerHTML = h;
+  document.getElementById("status").textContent = `${rows.length.toLocaleString("en-US")} players`;
+  const more = document.getElementById("more");
+  more.hidden = showAllRows || rows.length <= 500;
+  document.getElementById("showAll").textContent = `Show all ${rows.length.toLocaleString("en-US")} players`;
+  writeURL();
 }
 
-function renderSeason() {
-  const seg = document.getElementById("seasonSeg");
-  seg.innerHTML = [...SEASONS, "all"].map(s => `<button type="button" data-s="${s}" aria-pressed="${S.season === s}">${s === "all" ? "All" : s}</button>`).join("");
+// ---------- filter panel ----------
+function opts(list, sel) { return list.map(v => `<option ${v === sel ? "selected" : ""}>${esc(v)}</option>`).join(""); }
+function renderPanel() {
+  const teams = [...new Set([...DATA.teams.values()].map(t => t.team).filter(Boolean))].sort();
+  const confs = [...new Set([...DATA.teams.values()].map(t => t.conf).filter(Boolean))].sort();
+  const states = [...new Set([...DATA.players.values()].map(p => p.st).filter(Boolean))].sort();
+  let h = `<tr><td class="lab">Name</td><td><input type="text" class="name" id="f_name" value="${esc(S.name)}"></td></tr>
+  <tr><td class="lab">Team</td><td><select class="wide" id="f_team">${opts(["All", ...teams], S.team)}</select></td></tr>
+  <tr><td class="lab">State</td><td><select id="f_state">${opts(["All", ...states], S.state)}</select></td></tr>
+  <tr><td class="lab">Conf.</td><td><select id="f_conf">${opts(["All", "H.Maj", "Mid.Maj", ...confs], S.conf)}</select></td></tr>
+  <tr><td class="lab">Class</td><td><select id="f_cls">${opts(Object.keys(CLASSES), S.cls)}</select></td></tr>
+  <tr><td class="lab">Age</td><td><select id="f_age">${opts(Object.keys(AGES), S.age)}</select></td></tr>
+  <tr><td class="lab">Role</td><td><select id="f_role">${opts(["All", ...ROLES], S.role)}</select></td></tr>
+  <tr><td class="lab">Min Ht</td><td><input type="text" class="v" id="f_minHt" value="${esc(S.minHt)}" placeholder="in."></td></tr>
+  <tr><td class="lab">Max Ht</td><td><input type="text" class="v" id="f_maxHt" value="${esc(S.maxHt)}" placeholder="in."></td></tr>
+  <tr><td class="lab">Min Wt</td><td><input type="text" class="v" id="f_minWt" value="${esc(S.minWt)}" placeholder="lbs"></td></tr>
+  <tr><td class="lab">Max Wt</td><td><input type="text" class="v" id="f_maxWt" value="${esc(S.maxWt)}" placeholder="lbs"></td></tr>`;
+  for (const r of ROWS) {
+    if (!r) { h += `<tr class="sep"><td colspan="2">More stats</td></tr>`; continue; }
+    const on = S.show.has(r.col), f = S.f[r.key] || { op: ">=", v: "" };
+    h += `<tr><td class="lab ${on ? "" : "off"}"><span class="tg" data-col="${r.col}" title="Show/hide column">${on ? "✅" : "❌"}</span> ${esc(r.label)}</td>
+      <td><select data-op="${r.key}"><option ${f.op === ">=" ? "selected" : ""}>≥</option><option ${f.op === "<=" ? "selected" : ""}>≤</option></select>
+      <input type="text" class="v" data-v="${r.key}" value="${esc(f.v)}" inputmode="decimal"></td></tr>`;
+  }
+  h += `<tr class="sep"><td colspan="2">Custom filter</td></tr>
+  <tr><td colspan="2"><input type="text" class="custom" id="f_custom" value="${esc(S.custom)}" placeholder="r_un >= 60 and tpr >= 35" spellcheck="false"></td></tr>
+  <tr><td colspan="2" class="err" id="customErr">${esc(customErr)}</td></tr>`;
+  document.getElementById("fbody").innerHTML = h;
 }
-function renderCls() {
-  document.getElementById("clsChips").innerHTML = ["Fr", "So", "Jr", "Sr"].map(c => `<button type="button" class="chip" data-c="${c}" aria-pressed="${S.cls.includes(c)}">${c}</button>`).join("");
+function compileCustom() {
+  customFn = null; customErr = "";
+  if (S.custom.trim()) { try { customFn = compile(S.custom, KNOWN); } catch (e) { customErr = e.message; } }
+  const el = document.getElementById("customErr"); if (el) el.textContent = customErr;
 }
-function renderConfs() {
-  const confs = [...new Set(ROWS.map(r => r.conf))].sort();
-  document.getElementById("confGrid").innerHTML = confs.map(c => `<button type="button" class="chip" data-conf="${esc(c)}" aria-pressed="${S.confs.includes(c)}">${esc(c)}</button>`).join("");
-  document.getElementById("confSummary").textContent = S.confs.length ? `Conferences: ${S.confs.length > 4 ? S.confs.length + " picked" : S.confs.join(", ")}` : "Conferences: all";
+
+// ---------- top bar ----------
+function renderTop() {
+  document.getElementById("title").textContent = `${DATA.year} Player Finder`;
+  document.getElementById("confOnly").textContent = S.confOnly ? `${DATA.year} All Games` : `${DATA.year} Conf. Only`;
+  document.getElementById("hideFilters").checked = S.hide;
+  document.getElementById("filterBox").hidden = S.hide;
+  document.getElementById("topN").value = S.topN;
+  document.getElementById("venue").value = S.venue;
+  document.getElementById("from").value = S.from;
+  document.getElementById("to").value = S.to;
+  const parts = [];
+  if (S.confOnly) parts.push("Conference games only.");
+  if (parseInt(S.topN)) parts.push(`Games against top ${parseInt(S.topN)} teams.`);
+  if (S.venue !== "") parts.push({ "1": "Home", "-1": "Away", "0": "Neutral" }[S.venue] + " games only.");
+  if (S.from || S.to) parts.push(`Dates ${S.from || "start"} to ${S.to || "end"}.`);
+  document.getElementById("qualText").textContent = parts.join(" ") || "No quality filter.";
+  const c = SEASON_INFO.find(s => s.season === DATA.year);
+  document.getElementById("coverage").textContent = c ? coverageNote(c) : "";
 }
-function colOptions(sel) {
-  const groups = {};
-  for (const c of COLS) if (c.key !== "name") (groups[c.group] ||= []).push(c);
-  for (const f of S.formulas) if (f.fn) (groups["Formula"] ||= []).push({ key: f.name, label: f.name });
-  return Object.entries(groups).map(([g, cs]) => `<optgroup label="${esc(g)}">${cs.map(c => `<option value="${c.key}" ${c.key === sel ? "selected" : ""}>${esc(c.label)} (${c.key})</option>`).join("")}</optgroup>`).join("");
-}
-function renderBuilder() {
-  const box = document.getElementById("frows");
-  box.innerHTML = S.filters.map((f, i) => {
-    const m = colMeta(f.col) || COL.ppg, isS = m.fmt === "s";
-    const ops = isS ? [["=", "is"], ["!=", "is not"], ["~", "contains"]] : [[">=", "≥"], ["<=", "≤"], [">", ">"], ["<", "<"], ["=", "="], ["btw", "between"]];
-    return `<div class="frow" data-i="${i}">
-      <select class="col" data-f="col" aria-label="Column">${colOptions(f.col)}</select>
-      <select data-f="op" aria-label="Operator">${ops.map(([v, l]) => `<option value="${v}" ${f.op === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <input data-f="val" type="${isS ? "text" : "number"}" step="any" value="${esc(f.val ?? "")}" aria-label="Value">
-      ${f.op === "btw" ? `<span>and</span><input data-f="val2" type="number" step="any" value="${esc(f.val2 ?? "")}" aria-label="Upper value">` : ""}
-      <button class="x" type="button" data-f="del" aria-label="Remove filter">×</button>
-    </div>`;
-  }).join("") || `<div class="msg">No filters yet. Add one, pick a preset, or write a query below.</div>`;
-}
-function renderViews() {
-  document.getElementById("views").innerHTML = Object.entries(VIEWS).map(([k, v]) => `<button type="button" data-v="${k}" aria-pressed="${S.view === k}">${v.label}</button>`).join("");
-  document.getElementById("colDrop").hidden = S.view !== "custom";
-  const groups = {};
-  for (const c of COLS) (groups[c.group] ||= []).push(c);
-  document.getElementById("colPick").innerHTML = Object.entries(groups).map(([g, cs]) => `<h4>${esc(g)}</h4>` + cs.map(c => `<label><input type="checkbox" data-col="${c.key}" ${S.custom.includes(c.key) ? "checked" : ""}> ${esc(c.label)}</label>`).join("")).join("");
-}
-function renderFormulas() {
-  document.getElementById("fList").innerHTML = S.formulas.map((f, i) => `<span class="chip" style="display:inline-flex;gap:6px;align-items:center"><span class="mono">${esc(f.name)} = ${esc(f.expr)}</span>${f.err ? `<span style="color:var(--err)">(${esc(f.err)})</span>` : ""}<button class="x" type="button" data-fdel="${i}" aria-label="Remove ${esc(f.name)}">×</button></span>`).join("");
-}
-function renderGloss() {
-  document.getElementById("glossCols").innerHTML = [...new Set(COLS.map(c => c.group))].map(g =>
-    `<dl><dt style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--ink)">${esc(g)}</dt>${COLS.filter(c => c.group === g).map(c => `<dt>${c.key}</dt><dd>${esc(c.desc)}</dd>`).join("")}</dl>`).join("");
-}
-function renderAll() {
-  renderSeason(); renderCls(); renderConfs(); renderBuilder(); renderViews(); renderFormulas();
-  document.getElementById("minPct").value = S.minPct;
-  document.getElementById("search").value = S.search;
-  document.getElementById("expr").value = S.expr;
-  compileExpr(); refresh();
+function coverageNote(c) {
+  const bits = [];
+  if (c.pbp_pct < 95) bits.push(`shot zones come from the ${c.pbp_pct}% of games with play-by-play`);
+  if (c.ast_pct < 95) bits.push(`only ~${c.ast_pct}% of assists appear in play-by-play, so unassisted rates run high`);
+  if (c.loc_pct < 90) bits.push(c.loc_pct ? `shot locations exist for only ${c.loc_pct}% of shots (distance and corner columns are partial)` : "no shot locations, so distance and corner columns are empty");
+  return bits.length ? `${c.season}: ${bits.join("; ")}.` : "";
 }
 
 // ---------- events ----------
-let t;
-const debounced = fn => { clearTimeout(t); t = setTimeout(fn, 160); };
-document.getElementById("seasonSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; S.season = b.dataset.s; renderSeason(); refresh(); });
-document.getElementById("clsChips").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; const c = b.dataset.c; S.cls = S.cls.includes(c) ? S.cls.filter(x => x !== c) : [...S.cls, c]; renderCls(); refresh(); });
-document.getElementById("confGrid").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; const c = b.dataset.conf; S.confs = S.confs.includes(c) ? S.confs.filter(x => x !== c) : [...S.confs, c]; renderConfs(); refresh(); });
-document.getElementById("confHigh").addEventListener("click", () => { S.confs = HIGH_MAJORS.slice(); renderConfs(); refresh(); });
-document.getElementById("confClear").addEventListener("click", () => { S.confs = []; renderConfs(); refresh(); });
-document.addEventListener("click", e => { for (const d of document.querySelectorAll("details.drop[open]")) if (!d.contains(e.target)) d.open = false; });
-document.getElementById("minPct").addEventListener("input", e => { S.minPct = parseFloat(e.target.value) || 0; debounced(refresh); });
-document.getElementById("search").addEventListener("input", e => { S.search = e.target.value; debounced(refresh); });
-document.getElementById("expr").addEventListener("input", e => { S.expr = e.target.value; debounced(() => { compileExpr(); refresh(); }); });
-document.getElementById("addFilter").addEventListener("click", () => { S.filters.push({ col: "ppg", op: ">=", val: "", val2: "" }); renderBuilder(); const ins = document.querySelectorAll("#frows .frow select.col"); ins[ins.length - 1]?.focus(); save(); });
-const frows = document.getElementById("frows");
-frows.addEventListener("change", e => {
-  const row = e.target.closest(".frow"); if (!row) return;
-  const f = S.filters[+row.dataset.i], k = e.target.dataset.f;
-  if (k === "col") { const wasS = colMeta(f.col)?.fmt === "s"; f.col = e.target.value; const isS = colMeta(f.col).fmt === "s"; if (wasS !== isS) { f.op = isS ? "=" : ">="; f.val = ""; f.val2 = ""; } renderBuilder(); }
-  else if (k === "op") { f.op = e.target.value; renderBuilder(); }
-  refresh();
-});
-frows.addEventListener("input", e => { const row = e.target.closest(".frow"); if (!row) return; const k = e.target.dataset.f; if (k === "val" || k === "val2") { S.filters[+row.dataset.i][k] = e.target.value; debounced(refresh); } });
-frows.addEventListener("click", e => { if (e.target.dataset.f === "del") { S.filters.splice(+e.target.closest(".frow").dataset.i, 1); renderBuilder(); refresh(); } });
-document.getElementById("views").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; S.view = b.dataset.v; renderViews(); refresh(); });
-document.getElementById("colPick").addEventListener("change", e => {
-  const k = e.target.dataset.col; if (!k) return;
-  S.custom = e.target.checked ? [...S.custom, k] : S.custom.filter(c => c !== k);
-  S.custom.sort((a, b) => COLS.findIndex(c => c.key === a) - COLS.findIndex(c => c.key === b));
-  refresh();
-});
-document.getElementById("tablewrap").addEventListener("click", e => {
-  const th = e.target.closest("th[data-k]"); if (!th) return;
-  const k = th.dataset.k, m = colMeta(k);
-  S.sort = S.sort.key === k ? { key: k, dir: -S.sort.dir } : { key: k, dir: m.fmt === "s" ? 1 : -1 };
-  refresh();
-});
-document.getElementById("moreBtn").addEventListener("click", () => { limit += 100; refresh(true); });
-const preset = document.getElementById("preset");
-preset.innerHTML += PRESETS.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join("");
-preset.addEventListener("change", () => {
-  const p = PRESETS[+preset.value]; if (!p) return;
-  S.expr = p.expr; S.view = p.view; S.sort = { key: p.sort, dir: -1 }; S.filters = []; S.search = "";
-  if (p.season) S.season = p.season;
-  preset.value = ""; renderAll();
-});
-document.getElementById("fAdd").addEventListener("click", () => {
-  const name = document.getElementById("fName").value.trim().toLowerCase(), expr = document.getElementById("fExpr").value.trim(), msg = document.getElementById("fMsg");
-  if (!/^[a-z_][a-z0-9_]*$/.test(name)) { msg.className = "msg err"; msg.textContent = "Name the column with letters, digits and underscores, starting with a letter."; return; }
-  if (COL[name] || S.formulas.some(f => f.name === name)) { msg.className = "msg err"; msg.textContent = `"${name}" is already a column.`; return; }
-  try { compile(expr, knownCols()); } catch (e) { msg.className = "msg err"; msg.textContent = e.message; return; }
-  S.formulas.push({ name, expr }); applyFormulas();
-  msg.className = "msg"; msg.textContent = `Added ${name}. It shows at the end of every column set.`;
-  document.getElementById("fName").value = ""; document.getElementById("fExpr").value = "";
-  renderFormulas(); renderBuilder(); compileExpr(); refresh();
-});
-document.getElementById("fList").addEventListener("click", e => {
-  const i = e.target.dataset.fdel; if (i == null) return;
-  const name = S.formulas[+i].name; S.formulas.splice(+i, 1);
-  for (const r of ROWS) delete r[name];
-  if (S.sort.key === name) S.sort = { key: "ppg", dir: -1 };
-  applyFormulas(); renderFormulas(); renderBuilder(); compileExpr(); refresh();
-});
-async function copyText(text, btn, label) {
-  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
-  catch (e) { btn.textContent = "Copy blocked"; }
-  setTimeout(() => btn.textContent = label, 1400);
+let SEASON_INFO = [];
+async function setYear(y) {
+  document.getElementById("status").textContent = `Loading ${y}…`;
+  try {
+    const D = await loadSeason(y); D.year = y; DATA = D;
+    rowsAll = aggregate(D); buildPool(); showAllRows = false;
+    renderTop(); renderPanel(); compileCustom(); render();
+  } catch (e) { document.getElementById("status").textContent = `Couldn't load ${y} (${e.message}). Reload to try again.`; }
 }
-document.getElementById("copyQ").addEventListener("click", e => {
-  const parts = [];
-  if (S.season !== "all") parts.push(`season = ${S.season}`);
-  if (S.minPct) parts.push(`min_pct >= ${S.minPct}`);
-  if (S.cls.length) parts.push(`cls in (${S.cls.map(c => `'${c}'`).join(", ")})`);
-  if (S.confs.length) parts.push(`conf in (${S.confs.map(c => `'${c}'`).join(", ")})`);
-  for (const f of S.filters) if (f.val !== "") parts.push(f.op === "btw" ? `${f.col} between ${f.val} and ${f.val2}` : `${f.col} ${f.op === "~" ? "=" : f.op} ${colMeta(f.col).fmt === "s" ? `'${f.val}'` : f.val}`);
-  if (S.expr.trim()) parts.push(`(${S.expr.trim()})`);
-  copyText(parts.join(" and ") || "(no filters)", e.target, "Copy query");
+function recompute() { rowsAll = aggregate(DATA); buildPool(); renderTop(); render(); }
+let tmr; const later = fn => { clearTimeout(tmr); tmr = setTimeout(fn, 200); };
+
+document.getElementById("year").addEventListener("change", e => { S.year = e.target.value; setYear(+S.year); });
+document.getElementById("confOnly").addEventListener("click", e => { e.preventDefault(); S.confOnly = !S.confOnly; recompute(); });
+document.getElementById("hideFilters").addEventListener("change", e => { S.hide = e.target.checked; document.getElementById("filterBox").hidden = S.hide; writeURL(); });
+document.getElementById("go").addEventListener("click", () => {
+  S.topN = document.getElementById("topN").value.trim(); S.venue = document.getElementById("venue").value;
+  S.from = document.getElementById("from").value.trim(); S.to = document.getElementById("to").value.trim();
+  recompute();
 });
-document.getElementById("copyCsv").addEventListener("click", e => {
-  const cols = visibleCols();
-  const q = v => v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
-  copyText([cols.join(","), ...cached.map(r => cols.map(c => q(r[c])).join(","))].join("\n"), e.target, "Copy results as CSV");
+for (const id of ["topN", "from", "to"]) document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("go").click(); });
+const fbody = document.getElementById("fbody");
+fbody.addEventListener("click", e => {
+  const tg = e.target.closest(".tg"); if (!tg) return;
+  const c = tg.dataset.col; S.show.has(c) ? S.show.delete(c) : S.show.add(c);
+  renderPanel(); render();
 });
-document.getElementById("reset").addEventListener("click", () => {
-  for (const f of S.formulas) for (const r of ROWS) delete r[f.name];
-  Object.assign(S, DEFAULTS()); applyFormulas(); renderAll();
+fbody.addEventListener("input", e => {
+  const el = e.target;
+  if (el.dataset.v) { (S.f[el.dataset.v] ||= { op: ">=", v: "" }).v = el.value.trim(); later(render); return; }
+  const map = { f_name: "name", f_minHt: "minHt", f_maxHt: "maxHt", f_minWt: "minWt", f_maxWt: "maxWt", f_custom: "custom" };
+  if (map[el.id]) { S[map[el.id]] = el.value; later(() => { if (el.id === "f_custom") compileCustom(); render(); }); }
 });
+fbody.addEventListener("change", e => {
+  const el = e.target;
+  if (el.dataset.op) { (S.f[el.dataset.op] ||= { op: ">=", v: "" }).op = el.value === "≤" ? "<=" : ">="; render(); return; }
+  const map = { f_team: "team", f_state: "state", f_conf: "conf", f_cls: "cls", f_age: "age", f_role: "role" };
+  if (map[el.id]) { S[map[el.id]] = el.value; render(); }
+});
+document.getElementById("tbl").addEventListener("click", e => {
+  const th = e.target.closest("th[data-k]");
+  if (th) { const k = th.dataset.k; S.dir = S.sort === k ? -S.dir : (["name", "team", "conf", "role", "pick", "drtg", "top", "fc40"].includes(k) ? 1 : -1); S.sort = k; render(); return; }
+  const a = e.target.closest("a[data-team]");
+  if (a) { e.preventDefault(); S.team = a.dataset.team; renderPanel(); render(); }
+});
+document.getElementById("showAll").addEventListener("click", e => { e.preventDefault(); showAllRows = true; render(); });
 
 // ---------- boot ----------
 (async function boot() {
+  readURL();
   try {
-    const res = await fetch("data/players.csv");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const [head, ...body] = parseCSV(await res.text());
-    const textCols = new Set(["name", "team", "conf", "cls", "pos"]);
-    ROWS = body.filter(r => r.length === head.length).map(r => {
-      const o = {};
-      head.forEach((h, i) => { const v = r[i]; o[h] = textCols.has(h) ? (v === "" ? null : v) : (v === "" ? null : +v); });
-      o.name ??= ""; o.team ??= "";
-      return o;
-    });
-    SEASONS = [...new Set(ROWS.map(r => String(r.season)))].sort().reverse();
-    if (S.season !== "all" && !SEASONS.includes(S.season)) S.season = SEASONS[0];
-    document.getElementById("eyebrow").textContent = `D1 men · ${SEASONS[SEASONS.length - 1]}–${SEASONS[0]} · ESPN play-by-play`;
-    if (!COL[S.sort.key] && !S.formulas.some(f => f.name === S.sort.key)) S.sort = { key: "ppg", dir: -1 };
-    applyFormulas(); renderGloss(); renderAll();
-  } catch (e) {
-    document.getElementById("tablewrap").innerHTML = `<div class="loading">Couldn't load the player data (${esc(e.message)}). Reload the page to try again.</div>`;
-    document.getElementById("count").textContent = "No data";
-  }
+    SEASON_INFO = parseObjects(await getText("data/seasons.csv"));
+  } catch (e) { document.getElementById("status").textContent = `Couldn't load the season list (${e.message}).`; return; }
+  const years = SEASON_INFO.map(s => s.season);
+  if (!years.includes(+S.year)) S.year = String(years[0]);
+  document.getElementById("year").innerHTML = years.map(y => `<option ${String(y) === String(S.year) ? "selected" : ""}>${y}</option>`).join("");
+  document.getElementById("covTable").innerHTML = `<table><tr><th>Season</th><th>D1 games</th><th>Games with play-by-play</th><th>Assists found in play-by-play</th><th>Shots with location</th></tr>${SEASON_INFO.map(s => `<tr><td>${s.season}</td><td>${s.games.toLocaleString("en-US")}</td><td>${s.pbp_pct}%</td><td>${s.ast_pct}%</td><td>${s.loc_pct}%</td></tr>`).join("")}</table>`;
+  await setYear(+S.year);
 })();
 </script>
 </body>

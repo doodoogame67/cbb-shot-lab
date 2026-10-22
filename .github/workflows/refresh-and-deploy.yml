@@ -9,7 +9,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -23,18 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Rebuild player data
+      # The game-level data is ~225 MB, so it is built here and deployed, never committed.
+      - name: Build player data (2008 to current season)
         run: bash tools/refresh.sh
-
-      - name: Commit the CSV if it changed
-        run: |
-          if ! git diff --quiet -- site/data/players.csv; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
-            git add site/data/players.csv
-            git commit -m "Data refresh $(date -u +%F)"
-            git push
-          fi
 
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
