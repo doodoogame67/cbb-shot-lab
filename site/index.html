@@ -175,7 +175,7 @@ tbody tr:hover td { box-shadow: inset 0 0 0 9999px rgb(127 127 127 / 0.08); }
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <div class="eyebrow">D1 men · 2024–2026 · ESPN play-by-play</div>
+      <div class="eyebrow" id="eyebrow">D1 men · ESPN play-by-play</div>
       <h1>CBB <span>Shot</span> Lab</h1>
       <p>Filter every D1 player by how and where they score: unassisted rate by zone, rim vs. non-rim 2s vs. long 2s vs. 3s, corner 3s, and the usual tempo-free stats.</p>
     </div>
@@ -387,12 +387,12 @@ const VIEWS = {
 const PRESETS = [
   { name: "Self-creators at the rim", expr: "rim_a >= 100 and rim_unast >= 70", view: "self", sort: "rim_um40" },
   { name: "Pull-up 3 shooters", expr: "three_a >= 100 and three_unast >= 40 and three_pct >= 34", view: "self", sort: "three_um40" },
-  { name: "Long-2 diet (2026 locations)", expr: "far2_a >= 30 and far2_rate >= 7", view: "distance", sort: "far2_rate", season: "2026" },
+  { name: "Long-2 diet", expr: "far2_a >= 30 and far2_rate >= 7", view: "distance", sort: "far2_rate" },
   { name: "Pure catch-and-shoot", expr: "three_a >= 120 and tpr >= 60 and three_unast <= 10", view: "zones", sort: "three_pct" },
   { name: "Stretch bigs", expr: "ht >= 81 and tpr >= 35 and three_a >= 60", view: "overview", sort: "fg3_pct" },
   { name: "Three-level self-creators", expr: "rim_unast >= 55 and j2_unast >= 75 and three_unast >= 30 and pbp_fga >= 250", view: "self", sort: "usg" },
   { name: "Rim-feeding playmakers", expr: "ast_pct >= 25 and ast_rim_shr >= 55", view: "passing", sort: "ast_rim_shr" },
-  { name: "Corner specialists (2026)", expr: "c3_a >= 50 and c3_shr >= 40", view: "distance", sort: "c3_pct", season: "2026" },
+  { name: "Corner specialists", expr: "c3_a >= 50 and c3_shr >= 40", view: "distance", sort: "c3_pct" },
   { name: "Freshman shot creators", expr: "cls = 'Fr' and usg >= 24 and unast >= 50", view: "self", sort: "usg" },
 ];
 const HIGH_MAJORS = ["ACC", "B10", "B12", "BE", "SEC"];
@@ -402,8 +402,9 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem("shotlab:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem("shotlab:" + k, JSON.stringify(v)); } catch (e) {} },
 };
+let SEASONS = [];  // filled from the data, newest first
 const DEFAULTS = () => ({
-  season: "2026", minPct: 40, cls: [], confs: [], search: "", filters: [], expr: "",
+  season: SEASONS[0] || "2026", minPct: 40, cls: [], confs: [], search: "", filters: [], expr: "",
   view: "overview", sort: { key: "ppg", dir: -1 }, custom: ["name", "team", "conf", "min_pct", "usg", "unast", "rim_unast", "j2_unast", "three_unast", "tpr", "ts"],
   formulas: [],
 });
@@ -662,14 +663,14 @@ function refresh(keepLimit) {
   document.getElementById("more").hidden = cached.length <= limit;
   const usesLoc = cols.some(c => /^(close2|mid2|far2|c3|ab3)_/.test(c)) || /\b(close2|mid2|far2|c3|ab3)_/.test(S.expr) || S.filters.some(f => /^(close2|mid2|far2|c3|ab3)_/.test(f.col));
   const note = document.getElementById("locNote");
-  note.hidden = !(usesLoc && S.season !== "2026");
+  note.hidden = !(usesLoc && (S.season === "all" || +S.season < 2026));
   note.textContent = "Distance columns only count located shots. ESPN has locations for about 98% of 2026 shots but only about 26% of 2025 and 5% of 2024 shots, so those seasons' distance numbers are partial (see Loc%).";
   save();
 }
 
 function renderSeason() {
   const seg = document.getElementById("seasonSeg");
-  seg.innerHTML = ["2026", "2025", "2024", "all"].map(s => `<button type="button" data-s="${s}" aria-pressed="${S.season === s}">${s === "all" ? "All" : s}</button>`).join("");
+  seg.innerHTML = [...SEASONS, "all"].map(s => `<button type="button" data-s="${s}" aria-pressed="${S.season === s}">${s === "all" ? "All" : s}</button>`).join("");
 }
 function renderCls() {
   document.getElementById("clsChips").innerHTML = ["Fr", "So", "Jr", "Sr"].map(c => `<button type="button" class="chip" data-c="${c}" aria-pressed="${S.cls.includes(c)}">${c}</button>`).join("");
@@ -821,6 +822,9 @@ document.getElementById("reset").addEventListener("click", () => {
       o.name ??= ""; o.team ??= "";
       return o;
     });
+    SEASONS = [...new Set(ROWS.map(r => String(r.season)))].sort().reverse();
+    if (S.season !== "all" && !SEASONS.includes(S.season)) S.season = SEASONS[0];
+    document.getElementById("eyebrow").textContent = `D1 men · ${SEASONS[SEASONS.length - 1]}–${SEASONS[0]} · ESPN play-by-play`;
     if (!COL[S.sort.key] && !S.formulas.some(f => f.name === S.sort.key)) S.sort = { key: "ppg", dir: -1 };
     applyFormulas(); renderGloss(); renderAll();
   } catch (e) {
